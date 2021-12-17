@@ -1,0 +1,141 @@
+/*Add Target*/
+/*Pre Internet Tiers*/
+create table mlmodel_data.CG_DAT1_CH_IGN_bdl_up_202109 as
+select distinct 
+CUSTOMER_ID,
+CUSTOMER_ACCOUNT,
+CUSTOMER_COMPANY,
+case when CUSTOMER_COMPANY is not NULL 
+then trim(concat(CUSTOMER_COMPANY,CUSTOMER_ACCOUNT)) 
+else CUSTOMER_ACCOUNT end as CAN,
+ENTERPRISE_ID as ECID,
+CR_Key,
+CUSTOMER_LOCATION_ID,
+c.multi_product_name as CUSTOMER_MULTI_PRODUCT,
+product_tier_key
+FROM APP_IBRO.IBRO_SUBSCRIBER_ACTIVITY a inner join enterprise.multi_product_dim c 
+on (c.multi_product_key = a.customer_multi_product_key)
+and a.PRODUCT_BRAND = 'Rogers'
+and a.CUSTOMER_SEGMENT = 'CBU'
+and a.ACTIVITY = 'CL'  
+and a.ATTR_ADDRESS_CONTRACT_GROUP in ('1','3','4')
+and a.ATTR_ADDRESS_SERVICEBILITY = 'P'
+and a.ACTIVITY_DATE   = '2021-09-30'
+and a.PRODUCT_SOURCE='MS'
+and c.multi_product_name in (
+'TVE-INT',
+'TVE-INT-RHP',
+'TVE-INT-RHP-SHM',
+'TVE-INT-SHM');
+
+create table mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202109 as
+select distinct 
+a.*,
+level_4_description,
+case when level_4_description like ('Consumer - Ignite 50 %') then 'IG50u'/*make sure the space between 50 and %*/
+when level_4_description like ('Consumer - Ignite 75 %') then 'IG75'    /*make sure the space between 75 and %*/
+when level_4_description like ('Consumer - Ignite 150u %') then 'IG150u'
+when level_4_description like ('Consumer - Ignite 300 %') then 'IG300u' 
+when level_4_description like ('Consumer - Ignite 500u %') then 'IG500u'
+when level_4_description like ('Consumer - Ignite 1G%') then 'IG1Gig'
+else 'IG<30' end as pst_prod_tier,
+ 
+case when level_4_description like ('Consumer - Ignite 50 %') then 2
+when level_4_description like ('Consumer - Ignite 75 %') then 3
+when level_4_description like ('Consumer - Ignite 150u %') then 4
+when level_4_description like ('Consumer - Ignite 300 %') then 5 
+when level_4_description like ('Consumer - Ignite 500u %') then 6
+when level_4_description like ('Consumer - Ignite 1G%') then 7
+else 1 end as pst_prod_tier_sc 
+from mlmodel_data.CG_DAT1_CH_IGN_bdl_up_202109 a left join enterprise.product_hierarchy e
+on (e.product_key = a.product_tier_key);
+
+create table mlmodel_data.CG_DAT3_CH_IGN_bdl_up_202109 as
+select  
+CUSTOMER_ID,
+max(pst_prod_tier_sc) as pst_prod_tier_sc_max
+FROM  mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202109
+group by CUSTOMER_ID;
+
+create table mlmodel_data.CG_DAT4_CH_IGN_bdl_up_202109  as
+select  
+a.*,
+b.pst_prod_tier as pst_prod_tier_max
+FROM mlmodel_data.CG_DAT3_CH_IGN_bdl_up_202109 a, mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202109 b
+where a.CUSTOMER_ID=b.customer_id
+and a.pst_prod_tier_sc_max=b.pst_prod_tier_sc;
+
+/*Post Internet Tiers*/
+create table mlmodel_data.CG_DAT1_CH_IGN_bdl_up_202110 as
+select distinct 
+CUSTOMER_ID,
+CUSTOMER_ACCOUNT,
+CUSTOMER_COMPANY,
+case when CUSTOMER_COMPANY is not NULL 
+then trim(concat(CUSTOMER_COMPANY,CUSTOMER_ACCOUNT)) 
+else CUSTOMER_ACCOUNT end as CAN,
+ENTERPRISE_ID as ECID,
+CR_Key,
+CUSTOMER_LOCATION_ID,
+c.multi_product_name as CUSTOMER_MULTI_PRODUCT,
+product_tier_key
+FROM APP_IBRO.IBRO_SUBSCRIBER_ACTIVITY a inner join enterprise.multi_product_dim c 
+on (c.multi_product_key = a.customer_multi_product_key)
+and a.PRODUCT_BRAND = 'Rogers'
+and a.CUSTOMER_SEGMENT = 'CBU'
+and a.ACTIVITY = 'CL'  
+and a.ATTR_ADDRESS_CONTRACT_GROUP in ('1','3','4')
+and a.ATTR_ADDRESS_SERVICEBILITY = 'P'
+and a.ACTIVITY_DATE   = '2021-10-31'
+and a.PRODUCT_SOURCE='MS'
+and c.multi_product_name in (
+'TVE-INT',
+'TVE-INT-RHP',
+'TVE-INT-RHP-SHM',
+'TVE-INT-SHM');
+
+create table mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202110 as
+select distinct 
+a.*,
+level_4_description,
+case when level_4_description like ('Consumer - Ignite 50 %') then 'IG50u'/*make sure the space between 50 and %*/
+when level_4_description like ('Consumer - Ignite 75 %') then 'IG75'    /*make sure the space between 75 and %*/
+when level_4_description like ('Consumer - Ignite 150u %') then 'IG150u'
+when level_4_description like ('Consumer - Ignite 300 %') then 'IG300u' 
+when level_4_description like ('Consumer - Ignite 500u %') then 'IG500u'
+when level_4_description like ('Consumer - Ignite 1G%') then 'IG1Gig'
+else 'IG<30' end as pst_prod_tier,
+ 
+case when level_4_description like ('Consumer - Ignite 50 %') then 2
+when level_4_description like ('Consumer - Ignite 75 %') then 3
+when level_4_description like ('Consumer - Ignite 150u %') then 4
+when level_4_description like ('Consumer - Ignite 300 %') then 5 
+when level_4_description like ('Consumer - Ignite 500u %') then 6
+when level_4_description like ('Consumer - Ignite 1G%') then 7
+else 1 end as pst_prod_tier_sc 
+from mlmodel_data.CG_DAT1_CH_IGN_bdl_up_202110 a left join enterprise.product_hierarchy e
+on (e.product_key = a.product_tier_key);
+
+create table mlmodel_data.CG_DAT3_CH_IGN_bdl_up_202110 as
+select  
+CUSTOMER_ID,
+max(pst_prod_tier_sc) as pst_prod_tier_sc_max
+FROM  mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202110
+group by CUSTOMER_ID;
+
+create table mlmodel_data.CG_DAT4_CH_IGN_bdl_up_202110  as
+select  
+a.*,
+b.pst_prod_tier as pst_prod_tier_max
+FROM mlmodel_data.CG_DAT3_CH_IGN_bdl_up_202110 a, mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202110 b
+where a.CUSTOMER_ID=b.customer_id
+and a.pst_prod_tier_sc_max=b.pst_prod_tier_sc;
+
+/*Append the target on the end September base*/
+create table mlmodel_data.CG_DAT5_CH_IGN_bdl_up_202110 as
+select distinct
+a.CUSTOMER_ID,
+case when a.pre_prod_tier_sc_max<b.pst_prod_tier_sc_max then 1 else 0 end as target
+FROM mlmodel_data.CG_DAT4_CH_IGN_bdl_up_202109 a
+left join mlmodel_data.CG_DAT4_CH_IGN_bdl_up_202110 b
+on a.CUSTOMER_ID=b.customer_ID;

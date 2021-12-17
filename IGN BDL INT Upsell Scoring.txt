@@ -1,0 +1,3644 @@
+/*Create the Ignite Bundle Base for upsell*/
+
+create table mlmodel_data.CG_DAT1_CH_IGN_bdl_up_202109 as
+select distinct 
+CUSTOMER_ID,
+CUSTOMER_ACCOUNT,
+CUSTOMER_COMPANY,
+case when CUSTOMER_COMPANY is not NULL 
+then trim(concat(CUSTOMER_COMPANY,CUSTOMER_ACCOUNT)) 
+else CUSTOMER_ACCOUNT end as CAN,
+ENTERPRISE_ID as ECID,
+CR_Key,
+CUSTOMER_LOCATION_ID,
+c.multi_product_name as CUSTOMER_MULTI_PRODUCT,
+product_tier_key
+FROM APP_IBRO.IBRO_SUBSCRIBER_ACTIVITY a inner join enterprise.multi_product_dim c 
+on (c.multi_product_key = a.customer_multi_product_key)
+and a.PRODUCT_BRAND = 'Rogers'
+and a.CUSTOMER_SEGMENT = 'CBU'
+and a.ACTIVITY = 'CL'  
+and a.ATTR_ADDRESS_CONTRACT_GROUP in ('1','3','4')
+and a.ATTR_ADDRESS_SERVICEBILITY = 'P'
+and a.ACTIVITY_DATE   = '2021-09-30'
+and a.PRODUCT_SOURCE='MS'
+and c.multi_product_name in (
+'TVE-INT',
+'TVE-INT-RHP',
+'TVE-INT-RHP-SHM',
+'TVE-INT-SHM');
+
+/*Get the Internet Tiers*/
+create table mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202109 as
+select distinct 
+a.*,
+level_4_description,
+case when level_4_description like ('Consumer - Ignite 50 %') then 'IG50u'
+when level_4_description like ('Consumer - Ignite 75 %') then 'IG75'
+when level_4_description like ('Consumer - Ignite 150u %') then 'IG150u'
+when level_4_description like ('Consumer - Ignite 300 %') then 'IG300u' 
+when level_4_description like ('Consumer - Ignite 500u %') then 'IG500u'
+when level_4_description like ('Consumer - Ignite 1G%') then 'IG1Gig'
+else 'IG<30' end as pre_prod_tier,
+
+case when level_4_description like ('Consumer - Ignite 50 %') then 2
+when level_4_description like ('Consumer - Ignite 75 %') then 3
+when level_4_description like ('Consumer - Ignite 150u %') then 4
+when level_4_description like ('Consumer - Ignite 300 %') then 5 
+when level_4_description like ('Consumer - Ignite 500u %') then 6
+when level_4_description like ('Consumer - Ignite 1G%') then 7
+else 1 end as pre_prod_tier_sc 
+from mlmodel_data.CG_DAT1_CH_IGN_bdl_up_202109 a left join enterprise.product_hierarchy e
+on (e.product_key = a.product_tier_key);
+
+create table mlmodel_data.CG_DAT3_CH_IGN_bdl_up_202109 as
+select  
+CUSTOMER_ID,
+max(pre_prod_tier_sc) as pre_prod_tier_sc_max
+FROM mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202109
+group by CUSTOMER_ID;
+
+/*613,653 CR_keys and 612,960 customer IDs*/
+create table mlmodel_data.CG_DAT4_CH_IGN_bdl_up_202109 as
+select  distinct 
+a.*,
+b.pre_prod_tier as pre_prod_tier_max,
+b.CUSTOMER_ACCOUNT,
+b.CUSTOMER_COMPANY,
+b.CAN,
+b.ECID,
+b.CR_Key,
+b.CUSTOMER_LOCATION_ID,
+b.CUSTOMER_MULTI_PRODUCT
+FROM mlmodel_data.CG_DAT3_CH_IGN_bdl_up_202109 a, mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202109 b
+where a.CUSTOMER_ID=b.customer_id
+and a.pre_prod_tier_sc_max=b.pre_prod_tier_sc
+and b.pre_prod_tier<>'IG1Gig';
+
+/*Append attributes*/
+/*DS*/
+create table mlmodel_data.CG_DAT5_CH_IGN_bdl_up_202109 as
+select 
+a.*
+,cp.cr_class
+,cp.multi_segment
+,cp.cust_value
+,cp.hhld_qty
+,cp.sfu_mdu
+,cp.city_name
+,cp.province_code
+,cp.IPTV_Num_Act
+,cp.IPTV_Num_NC_Disconn
+,cp.IPTV_Num_Acquire
+,cp.IPTV_Num_Transfer_In
+,cp.IPTV_Num_Transfer_out
+,cp.IPTV_Num_Upgrade
+,cp.IPTV_Num_Downgrade
+,cp.IPTV_Num_Churn
+,cp.RINT_Num_Act
+,cp.RINT_Num_NC_Disconn
+,cp.RINT_Num_Acquire
+,cp.RINT_Num_Transfer_In
+,cp.RINT_Num_Transfer_Out
+,cp.RINT_Num_Churn
+,cp.RINT_Num_Upgrade
+,cp.RINT_Num_Downgrade
+,cp.TS_IPTV_Act
+,cp.TS_IPTV_NC_Disconn
+,cp.TS_IPTV_Acq
+,cp.TS_IPTV_Transfer_In
+,cp.TS_IPTV_Transfer_out
+,cp.TS_IPTV_Churn
+
+,pp.tsu_count
+/*,pp.int_product_code
+,pp.int_prod_start
+,pp.int_prod_end*/
+,pp.int_mths_ten
+,pp.int_disc_code
+,pp.int_disc_type
+,pp.int_serv_codes
+,pp.int_serv_codes_camp
+,pp.int_serv_codes_qty
+,pp.int_hf10
+,pp.int_hf15
+,pp.int_hf30
+,pp.int_hf50
+,pp.int_hf60
+,pp.int_hf80
+,pp.int_hf150
+,pp.int_hf175
+,pp.int_hf250
+,pp.int_unltd_250
+,pp.int_unltd_251
+,pp.int_unltd_100
+,pp.int_unltd_70
+,pp.int_60
+,pp.int_30
+,pp.int_15
+,pp.int_5
+,pp.int_unltd_1g
+,pp.int_express
+,pp.int_extreme
+,pp.int_extreme_plus
+,pp.int_lite
+,pp.int_ulite
+,pp.int_ultimate
+,pp.int_w2w_wifihub
+,pp.int_20
+,pp.int_w2w_wifi_beacon
+,pp.int_segment
+,pp.int_extreme_plus_tier
+,pp.int_extreme_tier
+,pp.int_express_tier
+,pp.int_lite_tier
+,pp.int_ulite_tier
+,pp.internet_modem
+,pp.internet_protection
+,pp.int_most_rcnt_campaign_code
+,pp.int_num_act_camp 
+,pp.int_hf10_num_act
+,pp.int_hf15_num_act
+,pp.int_hf30_num_act
+,pp.int_hf50_num_act
+,pp.int_hf60_num_act
+,pp.int_hf80_num_act
+,pp.int_hf150_num_act
+,pp.int_hf175_num_act
+,pp.int_hf250_num_act
+,pp.int_unltd_250_num_act
+,pp.int_unltd_251_num_act
+,pp.int_unltd_100_num_act
+,pp.int_unltd_70_num_act
+,pp.int_60_num_act
+,pp.int_30_num_act
+,pp.int_15_num_act
+,pp.int_5_num_act
+,pp.int_unltd_1g_num_act
+,pp.int_express_num_act
+,pp.int_extreme_num_act
+,pp.int_extreme_plus_num_act
+,pp.int_lite_num_act
+,pp.int_ulite_num_act
+,pp.int_ultimate_num_act
+,pp.int_w2w_wifihub_num_act
+,pp.int_20_num_act
+,pp.int_w2w_wifi_beacon_num_act
+,pp.int_hf10_num_deact
+,pp.int_hf15_num_deact
+,pp.int_hf30_num_deact
+,pp.int_hf50_num_deact
+,pp.int_hf60_num_deact
+,pp.int_hf80_num_deact
+,pp.int_hf150_num_deact
+,pp.int_hf175_num_deact
+,pp.int_hf250_num_deact
+,pp.int_unltd_250_num_deact
+,pp.int_unltd_251_num_deact
+,pp.int_unltd_100_num_deact
+,pp.int_unltd_70_num_deact
+,pp.int_60_num_deact
+,pp.int_30_num_deact
+,pp.int_15_num_deact
+,pp.int_5_num_deact
+,pp.int_unltd_1g_num_deact
+,pp.int_express_num_deact
+,pp.int_extreme_num_deact
+,pp.int_extreme_plus_num_deact
+,pp.int_lite_num_deact
+,pp.smb_internet_num_deact
+,pp.int_ulite_num_deact
+,pp.int_ultimate_num_deact
+,pp.int_w2w_wifihub_num_deact
+,pp.int_20_num_deact
+,pp.int_w2w_wifi_beacon_num_deact
+
+,ppa.int_unltd_100_num_act_7d
+,ppa.int_unltd_100_num_act_30d
+,ppa.int_unltd_100_num_act_90d
+,ppa.int_unltd_100_num_act_180d
+,ppa.int_unltd_100_num_deact_7d
+,ppa.int_unltd_100_num_deact_30d
+,ppa.int_unltd_100_num_deact_90d
+,ppa.int_unltd_100_num_deact_180d
+,ppa.int_unltd_1g_num_act_7d
+,ppa.int_unltd_1g_num_act_30d
+,ppa.int_unltd_1g_num_act_90d
+,ppa.int_unltd_1g_num_act_180d
+,ppa.int_unltd_1g_num_deact_7d
+,ppa.int_unltd_1g_num_deact_30d
+,ppa.int_unltd_1g_num_deact_90d
+,ppa.int_unltd_1g_num_deact_180d
+,ppa.int_unltd_250_num_act_7d
+,ppa.int_unltd_250_num_act_30d
+,ppa.int_unltd_250_num_act_90d
+,ppa.int_unltd_250_num_act_180d
+,ppa.int_unltd_250_num_deact_7d
+,ppa.int_unltd_250_num_deact_30d
+,ppa.int_unltd_250_num_deact_90d
+,ppa.int_unltd_250_num_deact_180d
+,ppa.int_unltd_251_num_act_7d
+,ppa.int_unltd_251_num_act_30d
+,ppa.int_unltd_251_num_act_90d
+,ppa.int_unltd_251_num_act_180d
+,ppa.int_unltd_251_num_deact_7d
+,ppa.int_unltd_251_num_deact_30d
+,ppa.int_unltd_251_num_deact_90d
+,ppa.int_unltd_251_num_deact_180d
+,ppa.int_unltd_70_num_act_7d
+,ppa.int_unltd_70_num_act_30d
+,ppa.int_unltd_70_num_act_90d
+,ppa.int_unltd_70_num_act_180d
+,ppa.int_unltd_70_num_deact_7d
+,ppa.int_unltd_70_num_deact_30d
+,ppa.int_unltd_70_num_deact_90d
+,ppa.int_unltd_70_num_deact_180d
+
+,mom.ftth_seg
+,mom.ftth_ind 
+,mom.pst_neg_rate_ind 
+,mom.pst_neg_rate_cd
+,mom.pst_neg_rate_amt
+,mom.pst_tve_neg_rate_amt
+,mom.pst_int_neg_rate_amt
+,mom.pst_gross_msf
+,mom.pst_net_msf
+,mom.pst_msf_override
+,mom.pst_discount
+,mom.pst_one_time_charges
+,mom.pst_tsu_count
+,mom.pst_int_discount
+,mom.pst_int_net_msf
+,mom.pst_int_product_code
+,mom.pst_int_disc_code
+,mom.pst_int_mths_disc_end
+,mom.pst_int_serv_msf
+,mom.pst_int_serv_disc
+,mom.pst_int_serv_net
+,mom.pst_int_equip_msf
+,mom.pst_int_equip_disc
+,mom.pst_int_equip_net
+,mom.pst_tve_gross_msf
+,mom.pst_tve_discount
+,mom.pst_tve_net_msf
+,mom.pst_tve_mths_disc_end
+,mom.pst_tve_tier_msf
+,mom.pst_tve_tier_disc
+,mom.pst_tve_tier_net
+,mom.pst_tve_serv_msf
+,mom.pst_tve_serv_disc
+,mom.pst_tve_serv_net
+,mom.pst_tve_equip_msf
+,mom.pst_tve_equip_disc
+,mom.pst_tve_equip_net
+,mom.arpa_in
+,mom.arpa_out
+,mom.tsu_gain
+,mom.tsu_loss
+,mom.arpa_transfers
+,mom.arpa_adjustments
+,mom.net_adds
+,mom.gross_adds
+,mom.tot_gross_delta
+,mom.tot_net_delta
+,mom.tot_disc_delta
+,mom.int_gross_delta
+,mom.int_net_delta
+,mom.int_disc_delta
+,mom.int_serv_msf_delta
+,mom.int_serv_net_delta
+,mom.int_serv_disc_delta
+,mom.int_equip_msf_delta
+,mom.int_equip_net_delta
+,mom.int_equip_disc_delta
+
+,mom.tve_gross_delta
+,mom.tve_net_delta
+,mom.tve_disc_delta
+,mom.tve_tier_msf_delta
+,mom.tve_tier_net_delta
+,mom.tve_tier_disc_delta
+,mom.tve_serv_msf_delta
+,mom.tve_serv_net_delta
+,mom.tve_serv_disc_delta
+,mom.tve_equip_msf_delta
+,mom.tve_equip_net_delta
+,mom.tve_equip_disc_delta
+,mom.rhp_gross_delta
+,mom.rhp_net_delta
+,mom.rhp_disc_delta
+,mom.shm_gross_delta
+,mom.shm_net_delta
+,mom.shm_disc_delta
+,crm.int_cnt
+,crm.int_duration
+,crm.retention_calls
+,crm.digital_calls
+,crm.t3_calls
+,crm.coe_calls
+,crm.business_calls
+,crm.fido_calls
+,crm.credit_ops_calls
+,crm.tech_care_calls
+,crm.escalation_calls
+,crm.tv_eop_int
+,crm.bb_eop_int
+,crm.eop_int
+
+,crma.sm_int_cnt_6m
+,crma.sm_int_duration_6m
+,crma.sm_retention_calls_6m
+,crma.sm_digital_calls_6m
+,crma.sm_t3_calls_6m
+,crma.sm_coe_calls_6m
+,crma.sm_business_calls_6m
+,crma.sm_fido_calls_6m
+,crma.sm_credit_ops_calls_6m
+,crma.sm_tech_care_calls_6m
+,crma.sm_escalation_calls_6m
+,crma.sm_eop_int_6m
+,crma.sm_bb_eop_int_6m
+,crma.sm_tv_eop_int_6m
+,crma.sm_rhp_eop_int_6m
+,crma.sm_int_cnt_3m
+,crma.sm_int_duration_3m
+,crma.sm_retention_calls_3m
+,crma.sm_digital_calls_3m
+,crma.sm_t3_calls_3m
+,crma.sm_coe_calls_3m
+,crma.sm_business_calls_3m
+,crma.sm_fido_calls_3m
+,crma.sm_credit_ops_calls_3m
+,crma.sm_tech_care_calls_3m
+,crma.sm_escalation_calls_3m
+,crma.sm_eop_int_3m
+,crma.sm_bb_eop_int_3m
+,crma.sm_tv_eop_int_3m
+,crma.sm_rhp_eop_int_3m
+,crma.sm_int_cnt_1m
+,crma.sm_int_duration_1m
+,crma.sm_retention_calls_1m
+,crma.sm_digital_calls_1m
+,crma.sm_t3_calls_1m
+,crma.sm_coe_calls_1m
+,crma.sm_business_calls_1m
+,crma.sm_fido_calls_1m
+,crma.sm_credit_ops_calls_1m
+,crma.sm_tech_care_calls_1m
+,crma.sm_escalation_calls_1m
+,crma.sm_eop_int_1m
+,crma.sm_bb_eop_int_1m
+,crma.sm_tv_eop_int_1m
+,crma.sm_rhp_eop_int_1m
+,crma.sm_int_cnt_7d
+,crma.sm_int_duration_7d
+,crma.sm_retention_calls_7d
+,crma.sm_digital_calls_7d
+,crma.sm_t3_calls_7d
+,crma.sm_coe_calls_7d
+,crma.sm_business_calls_7d
+,crma.sm_fido_calls_7d
+,crma.sm_credit_ops_calls_7d
+,crma.sm_tech_care_calls_7d
+,crma.sm_escalation_calls_7d
+,crma.sm_eop_int_7d
+,crma.sm_bb_eop_int_7d
+,crma.sm_tv_eop_int_7d
+,crma.sm_rhp_eop_int_7d
+
+,cbca.sm_num_call_tv_6m
+,cbca.sm_num_call_int_6m
+,cbca.sm_num_call_rhp_6m
+,cbca.sm_total_num_calls_6m
+,cbca.sm_num_call_tv_am_6m
+,cbca.sm_num_call_int_am_6m
+,cbca.sm_num_call_rhp_am_6m
+,cbca.sm_num_call_tv_billing_6m
+,cbca.sm_num_call_int_billing_6m
+,cbca.sm_num_call_rhp_billing_6m
+,cbca.sm_num_call_tv_hdm_6m
+,cbca.sm_num_call_int_hdm_6m
+,cbca.sm_num_call_rhp_hdm_6m
+,cbca.sm_num_call_tv_pc_6m
+,cbca.sm_num_call_int_pc_6m
+,cbca.sm_num_call_rhp_pc_6m
+,cbca.sm_num_call_tv_pso_6m
+,cbca.sm_num_call_int_pso_6m
+,cbca.sm_num_call_rhp_pso_6m
+,cbca.sm_num_call_tv_other_6m
+,cbca.sm_num_call_int_other_6m
+,cbca.sm_num_call_rhp_other_6m
+,cbca.sm_num_call_tv_tps_6m
+,cbca.sm_num_call_int_tps_6m
+,cbca.sm_num_call_rhp_tps_6m
+,cbca.sm_num_call_tv_3m
+,cbca.sm_num_call_int_3m
+,cbca.sm_num_call_rhp_3m
+,cbca.sm_total_num_calls_3m
+,cbca.sm_num_call_tv_am_3m
+,cbca.sm_num_call_int_am_3m
+,cbca.sm_num_call_rhp_am_3m
+,cbca.sm_num_call_tv_billing_3m
+,cbca.sm_num_call_int_billing_3m
+,cbca.sm_num_call_rhp_billing_3m
+,cbca.sm_num_call_tv_hdm_3m
+,cbca.sm_num_call_int_hdm_3m
+,cbca.sm_num_call_rhp_hdm_3m
+,cbca.sm_num_call_tv_pc_3m
+,cbca.sm_num_call_int_pc_3m
+,cbca.sm_num_call_rhp_pc_3m
+,cbca.sm_num_call_tv_pso_3m
+,cbca.sm_num_call_int_pso_3m
+,cbca.sm_num_call_rhp_pso_3m
+,cbca.sm_num_call_tv_other_3m
+,cbca.sm_num_call_int_other_3m
+,cbca.sm_num_call_rhp_other_3m
+,cbca.sm_num_call_tv_tps_3m
+,cbca.sm_num_call_int_tps_3m
+,cbca.sm_num_call_rhp_tps_3m
+,cbca.sm_num_call_tv_1m
+,cbca.sm_num_call_int_1m
+,cbca.sm_num_call_rhp_1m
+,cbca.sm_total_num_calls_1m
+,cbca.sm_num_call_tv_am_1m
+,cbca.sm_num_call_int_am_1m
+,cbca.sm_num_call_rhp_am_1m
+,cbca.sm_num_call_tv_billing_1m
+,cbca.sm_num_call_int_billing_1m
+,cbca.sm_num_call_rhp_billing_1m
+,cbca.sm_num_call_tv_hdm_1m
+,cbca.sm_num_call_int_hdm_1m
+,cbca.sm_num_call_rhp_hdm_1m
+,cbca.sm_num_call_tv_pc_1m
+,cbca.sm_num_call_int_pc_1m
+,cbca.sm_num_call_rhp_pc_1m
+,cbca.sm_num_call_tv_pso_1m
+,cbca.sm_num_call_int_pso_1m
+,cbca.sm_num_call_rhp_pso_1m
+,cbca.sm_num_call_tv_other_1m
+,cbca.sm_num_call_int_other_1m
+,cbca.sm_num_call_rhp_other_1m
+,cbca.sm_num_call_tv_tps_1m
+,cbca.sm_num_call_int_tps_1m
+,cbca.sm_num_call_rhp_tps_1m
+,cbca.sm_num_call_tv_7d
+,cbca.sm_num_call_int_7d
+,cbca.sm_num_call_rhp_7d
+,cbca.sm_total_num_calls_7d
+,cbca.sm_num_call_tv_am_7d
+,cbca.sm_num_call_int_am_7d
+,cbca.sm_num_call_rhp_am_7d
+,cbca.sm_num_call_tv_billing_7d
+,cbca.sm_num_call_int_billing_7d
+,cbca.sm_num_call_rhp_billing_7d
+,cbca.sm_num_call_tv_hdm_7d
+,cbca.sm_num_call_int_hdm_7d
+,cbca.sm_num_call_rhp_hdm_7d
+,cbca.sm_num_call_tv_pc_7d
+,cbca.sm_num_call_int_pc_7d
+,cbca.sm_num_call_rhp_pc_7d
+,cbca.sm_num_call_tv_pso_7d
+,cbca.sm_num_call_int_pso_7d
+,cbca.sm_num_call_rhp_pso_7d
+,cbca.sm_num_call_tv_other_7d
+,cbca.sm_num_call_int_other_7d
+,cbca.sm_num_call_rhp_other_7d
+,cbca.sm_num_call_tv_tps_7d
+,cbca.sm_num_call_int_tps_7d
+,cbca.sm_num_call_rhp_tps_7d
+
+,cpa.rtv_num_act_7d
+,cpa.rtv_num_act_30d
+,cpa.rtv_num_act_90d
+,cpa.rtv_num_act_180d
+,cpa.rtv_num_nc_disconn_7d
+,cpa.rtv_num_nc_disconn_30d
+,cpa.rtv_num_nc_disconn_90d
+,cpa.rtv_num_nc_disconn_180d
+,cpa.rtv_num_acquire_7d
+,cpa.rtv_num_acquire_30d
+,cpa.rtv_num_acquire_90d
+,cpa.rtv_num_acquire_180d
+,cpa.rtv_num_transfer_in_7d
+,cpa.rtv_num_transfer_in_30d
+,cpa.rtv_num_transfer_in_90d
+,cpa.rtv_num_transfer_in_180d
+,cpa.rtv_num_transfer_out_7d
+,cpa.rtv_num_transfer_out_30d
+,cpa.rtv_num_transfer_out_90d
+,cpa.rtv_num_transfer_out_180d
+,cpa.rtv_num_upgrade_7d
+,cpa.rtv_num_upgrade_30d
+,cpa.rtv_num_upgrade_90d
+,cpa.rtv_num_upgrade_180d
+,cpa.rtv_num_downgrade_7d
+,cpa.rtv_num_downgrade_30d
+,cpa.rtv_num_downgrade_90d
+,cpa.rtv_num_downgrade_180d
+,cpa.rtv_num_churn_7d
+,cpa.rtv_num_churn_30d
+,cpa.rtv_num_churn_90d
+,cpa.rtv_num_churn_180d
+,cpa.iptv_num_act_7d
+,cpa.iptv_num_act_30d
+,cpa.iptv_num_act_90d
+,cpa.iptv_num_act_180d
+,cpa.iptv_num_nc_disconn_7d
+,cpa.iptv_num_nc_disconn_30d
+,cpa.iptv_num_nc_disconn_90d
+,cpa.iptv_num_nc_disconn_180d
+,cpa.iptv_num_acquire_7d
+,cpa.iptv_num_acquire_30d
+,cpa.iptv_num_acquire_90d
+,cpa.iptv_num_acquire_180d
+,cpa.iptv_num_transfer_in_7d
+,cpa.iptv_num_transfer_in_30d
+,cpa.iptv_num_transfer_in_90d
+,cpa.iptv_num_transfer_in_180d
+,cpa.iptv_num_transfer_out_7d
+,cpa.iptv_num_transfer_out_30d
+,cpa.iptv_num_transfer_out_90d
+,cpa.iptv_num_transfer_out_180d
+,cpa.iptv_num_upgrade_7d
+,cpa.iptv_num_upgrade_30d
+,cpa.iptv_num_upgrade_90d
+,cpa.iptv_num_upgrade_180d
+,cpa.iptv_num_downgrade_7d
+,cpa.iptv_num_downgrade_30d
+,cpa.iptv_num_downgrade_90d
+,cpa.iptv_num_downgrade_180d
+,cpa.iptv_num_churn_7d
+,cpa.iptv_num_churn_30d
+,cpa.iptv_num_churn_90d
+,cpa.iptv_num_churn_180d
+,cpa.rint_num_act_7d
+,cpa.rint_num_act_30d
+,cpa.rint_num_act_90d
+,cpa.rint_num_act_180d
+,cpa.rint_num_nc_disconn_7d
+,cpa.rint_num_nc_disconn_30d
+,cpa.rint_num_nc_disconn_90d
+,cpa.rint_num_nc_disconn_180d
+,cpa.rint_num_acquire_7d
+,cpa.rint_num_acquire_30d
+,cpa.rint_num_acquire_90d
+,cpa.rint_num_acquire_180d
+,cpa.rint_num_transfer_in_7d
+,cpa.rint_num_transfer_in_30d
+,cpa.rint_num_transfer_in_90d
+,cpa.rint_num_transfer_in_180d
+,cpa.rint_num_transfer_out_7d
+,cpa.rint_num_transfer_out_30d
+,cpa.rint_num_transfer_out_90d
+,cpa.rint_num_transfer_out_180d
+,cpa.rint_num_churn_7d
+,cpa.rint_num_churn_30d
+,cpa.rint_num_churn_90d
+,cpa.rint_num_churn_180d
+,cpa.rint_num_upgrade_7d
+,cpa.rint_num_upgrade_30d
+,cpa.rint_num_upgrade_90d
+,cpa.rint_num_upgrade_180d
+,cpa.rint_num_downgrade_7d
+,cpa.rint_num_downgrade_30d
+,cpa.rint_num_downgrade_90d
+,cpa.rint_num_downgrade_180d
+
+,ra.av_tot_msf_override_6m
+,ra.av_tot_discount_6m
+,ra.av_tot_one_time_charges_6m
+,ra.av_neg_rate_amt_6m
+,ra.av_int_gross_msf_6m
+,ra.av_int_discount_6m
+,ra.av_int_net_msf_6m
+,ra.av_int_one_time_charge_6m
+,ra.av_int_neg_rate_amt_6m
+,ra.av_int_serv_msf_6m
+,ra.av_int_serv_override_6m
+,ra.av_int_serv_disc_6m
+,ra.av_int_serv_net_6m
+,ra.av_int_serv_onetime_6m
+,ra.av_int_equip_msf_6m
+,ra.av_int_equip_override_6m
+,ra.av_int_equip_disc_6m
+,ra.av_int_equip_net_6m
+,ra.av_int_equip_onetime_6m
+,ra.av_ecp_amt_6m
+,ra.av_optional_amt_rhp_6m
+,ra.av_saf_amt_6m
+,ra.av_ar_balance_6m
+
+,ra.av_tve_gross_msf_3m
+,ra.av_tve_discount_3m
+,ra.av_tve_one_time_charge_3m
+,ra.av_tve_neg_rate_amt_3m
+,ra.av_tve_tier_msf_3m
+,ra.av_tve_tier_override_3m
+,ra.av_tve_tier_disc_3m
+,ra.av_tve_tier_net_3m
+,ra.av_tve_tier_onetime_3m
+,ra.av_tve_serv_msf_3m
+,ra.av_tve_serv_override_3m
+,ra.av_tve_serv_disc_3m
+,ra.av_tve_serv_net_3m
+,ra.av_tve_serv_onetime_3m
+,ra.av_tve_equip_msf_3m
+,ra.av_tve_equip_override_3m
+,ra.av_tve_equip_disc_3m
+,ra.av_tve_equip_net_3m
+,ra.av_tve_equip_onetime_3m
+,ra.av_tot_msf_override_3M
+,ra.av_tot_discount_3M
+,ra.av_tot_one_time_charges_3M
+,ra.av_neg_rate_amt_3M
+,ra.av_int_gross_msf_3M
+,ra.av_int_discount_3M
+,ra.av_int_net_msf_3M
+,ra.av_int_one_time_charge_3M
+,ra.av_int_neg_rate_amt_3M
+,ra.av_int_serv_msf_3M
+,ra.av_int_serv_override_3M
+,ra.av_int_serv_disc_3M
+,ra.av_int_serv_net_3M
+,ra.av_int_serv_onetime_3M
+,ra.av_int_equip_msf_3M
+,ra.av_int_equip_override_3M
+,ra.av_int_equip_disc_3M
+,ra.av_int_equip_net_3M
+,ra.av_int_equip_onetime_3M
+,ra.av_ecp_amt_3M
+,ra.av_optional_amt_rhp_3M
+,ra.av_saf_amt_3M
+,ra.av_ar_balance_3M
+
+,ra.av_tot_msf_override_1M
+,ra.av_tot_discount_1M
+,ra.av_tot_one_time_charges_1M
+,ra.av_neg_rate_amt_1M
+,ra.av_int_gross_msf_1M
+,ra.av_int_discount_1M
+,ra.av_int_net_msf_1M
+,ra.av_int_one_time_charge_1M
+,ra.av_int_neg_rate_amt_1M
+,ra.av_int_serv_msf_1M
+,ra.av_int_serv_override_1M
+,ra.av_int_serv_disc_1M
+,ra.av_int_serv_net_1M
+,ra.av_int_serv_onetime_1M
+,ra.av_int_equip_msf_1M
+,ra.av_int_equip_override_1M
+,ra.av_int_equip_disc_1M
+,ra.av_int_equip_net_1M
+,ra.av_int_equip_onetime_1M
+,ra.av_ecp_amt_1M
+,ra.av_optional_amt_rhp_1M
+,ra.av_saf_amt_1M
+,ra.av_ar_balance_1M
+,ra.tr_tot_msf_override_7d
+,ra.tr_tot_msf_override_3m
+,ra.tr_tot_msf_override_6m
+,ra.tr_tot_discount_7d
+,ra.tr_tot_discount_3m
+,ra.tr_tot_discount_6m
+,ra.tr_tot_one_time_charges_7d
+,ra.tr_tot_one_time_charges_3m
+,ra.tr_tot_one_time_charges_6m
+,ra.tr_neg_rate_amt_7d
+,ra.tr_neg_rate_amt_3m
+,ra.tr_neg_rate_amt_6m
+,ra.tr_int_gross_msf_7d
+,ra.tr_int_gross_msf_3m
+,ra.tr_int_gross_msf_6m
+,ra.tr_int_discount_7d
+,ra.tr_int_discount_3m
+,ra.tr_int_discount_6m
+,ra.tr_int_net_msf_7d
+,ra.tr_int_net_msf_3m
+,ra.tr_int_net_msf_6m
+,ra.tr_int_one_time_charge_7d
+,ra.tr_int_one_time_charge_3m
+,ra.tr_int_one_time_charge_6m
+,ra.tr_int_neg_rate_amt_7d
+,ra.tr_int_neg_rate_amt_3m
+,ra.tr_int_neg_rate_amt_6m
+,ra.tr_int_serv_msf_7d
+,ra.tr_int_serv_msf_3m
+,ra.tr_int_serv_msf_6m
+,ra.tr_int_serv_override_7d
+,ra.tr_int_serv_override_3m
+,ra.tr_int_serv_override_6m
+,ra.tr_int_serv_disc_7d
+,ra.tr_int_serv_disc_3m
+,ra.tr_int_serv_disc_6m
+,ra.tr_int_serv_net_7d
+,ra.tr_int_serv_net_3m
+,ra.tr_int_serv_net_6m
+,ra.tr_int_serv_onetime_7d
+,ra.tr_int_serv_onetime_3m
+,ra.tr_int_serv_onetime_6m
+,ra.tr_int_equip_msf_7d
+,ra.tr_int_equip_msf_3m
+,ra.tr_int_equip_msf_6m
+,ra.tr_int_equip_override_7d
+,ra.tr_int_equip_override_3m
+,ra.tr_int_equip_override_6m
+,ra.tr_int_equip_disc_7d
+,ra.tr_int_equip_disc_3m
+,ra.tr_int_equip_disc_6m
+,ra.tr_int_equip_net_7d
+,ra.tr_int_equip_net_3m
+,ra.tr_int_equip_net_6m
+,ra.tr_int_equip_onetime_7d
+,ra.tr_int_equip_onetime_3m
+,ra.tr_int_equip_onetime_6m
+,r.tot_msf_override
+,r.tot_discount
+,r.tot_one_time_charges
+,r.neg_rate_ind
+,r.neg_rate_cd
+,r.neg_rate_amt
+,r.int_gross_msf
+,r.int_discount
+,r.int_net_msf
+,r.int_one_time_charge
+,r.int_neg_rate_amt
+,r.int_serv_msf
+,r.int_serv_override
+,r.int_serv_disc
+,r.int_serv_net
+,r.int_serv_onetime
+,r.int_equip_msf
+,r.int_equip_override
+,r.int_equip_disc
+,r.int_equip_net
+,r.int_equip_onetime
+,r.internet_usage_fee
+
+,hp.int_docsis_3_1_ac_gw
+,hp.int_docsis_3_ac_gw
+,hp.int_docsis_3_n_gw
+,hp.int_docsis_3
+,hp.int_wifi_ntwk
+,hp.int_ethernet_card
+,hp.int_docsis_2
+,hp.int_dsl
+,hp.int_docsis_2_g_gw
+,hp.int_docsis_3_gw_e
+,hp.int_hw_others
+,hp.int_box_modem_p
+,hp.int_box_modem_r
+,hp.int_num_docsis_3_1_ac_gw
+,hp.int_num_docsis_3_ac_gw
+,hp.int_num_docsis_3_n_gw
+,hp.int_num_docsis_3
+,hp.int_num_wifi_ntwk
+,hp.int_num_ethernet_card
+,hp.int_num_docsis_2
+,hp.int_num_dsl
+,hp.int_num_docsis_2_g_gw
+,hp.int_num_docsis_3_gw_e
+,hp.int_num_hw_others
+,hp.int_num_box_modem_p
+,hp.int_num_box_modem_r
+
+,hp.tv_box_sd_pvr_r
+,hp.tv_box_sd_pvr_p
+,hp.tv_box_sd_nonpvr_r
+,hp.tv_box_sd_nonpvr_p
+,hp.tv_box_sd
+,hp.tv_box_hd_pvr_r
+,hp.tv_box_hd_pvr_p
+,hp.tv_box_hd_nonpvr_r
+,hp.tv_box_hd_nonpvr_p
+,hp.tv_box_hd
+,hp.tv_box_nextbox_pvr_r
+,hp.tv_box_nextbox_pvr_p
+,hp.tv_box_nextbox_nonpvr_r
+,hp.tv_box_nextbox_nonpvr_p
+,hp.tv_digital_adapter
+,hp.tv_moxi_r
+,hp.tv_box_nextbox_nonpvr_ro
+,hp.tv_box_nextbox_pvr_ro
+,hp.tv_1tb_pvr_extender
+,hp.tv_moxi_p
+,hp.tv_box_nextbox_4k_pvr_p
+,hp.tv_box_nextbox_4k_nonpvr_r
+,hp.tv_box_nextbox_4k_nonpvr_p
+
+,hp.ts_tv_box_sd_pvr_r_last_add_date
+,hp.ts_tv_box_sd_pvr_p_last_add_date
+,hp.ts_tv_box_sd_nonpvr_r_last_add_date
+,hp.ts_tv_box_sd_nonpvr_p_last_add_date
+,hp.ts_tv_box_sd_last_add_date
+,hp.ts_tv_box_hd_pvr_r_last_add_date
+,hp.ts_tv_box_hd_pvr_p_last_add_date
+,hp.ts_tv_box_hd_nonpvr_r_last_add_date
+,hp.ts_tv_box_hd_nonpvr_p_last_add_date
+,hp.ts_tv_box_hd_last_add_date
+,hp.ts_tv_box_nextbox_pvr_r_last_add_date
+,hp.ts_tv_box_nextbox_pvr_p_last_add_date
+,hp.ts_tv_box_nextbox_nonpvr_r_last_add_date
+,hp.ts_tv_box_nextbox_nonpvr_p_last_add_date
+,hp.ts_tv_digital_adapter_last_add_date
+,hp.ts_tv_moxi_r_last_add_date
+,hp.ts_tv_box_nextbox_nonpvr_ro_last_add_date
+,hp.ts_tv_box_nextbox_pvr_ro_last_add_date
+,hp.ts_tv_1tb_pvr_extender_last_add_date
+,hp.ts_tv_moxi_p_last_add_date
+,hp.ts_tv_box_nextbox_4k_pvr_p_last_add_date
+,hp.ts_tv_box_nextbox_4k_nonpvr_r_last_add_date
+,hp.ts_tv_box_nextbox_4k_nonpvr_p_last_add_date
+,hp.ts_tv_box_sd_pvr_r_last_drop_date
+,hp.ts_tv_box_sd_pvr_p_last_drop_date
+,hp.ts_tv_box_sd_nonpvr_r_last_drop_date
+,hp.ts_tv_box_sd_nonpvr_p_last_drop_date
+,hp.ts_tv_box_sd_last_drop_date
+,hp.ts_tv_box_hd_pvr_r_last_drop_date
+,hp.ts_tv_box_hd_pvr_p_last_drop_date
+,hp.ts_tv_box_hd_nonpvr_r_last_drop_date
+,hp.ts_tv_box_hd_nonpvr_p_last_drop_date
+,hp.ts_tv_box_hd_last_drop_date
+,hp.ts_tv_box_nextbox_pvr_r_last_drop_date
+,hp.ts_tv_box_nextbox_pvr_p_last_drop_date
+,hp.ts_tv_box_nextbox_nonpvr_r_last_drop_date
+,hp.ts_tv_box_nextbox_nonpvr_p_last_drop_date
+,hp.ts_tv_digital_adapter_last_drop_date
+,hp.ts_tv_moxi_r_last_drop_date
+,hp.ts_tv_box_nextbox_nonpvr_ro_last_drop_date
+,hp.ts_tv_box_nextbox_pvr_ro_last_drop_date
+,hp.ts_tv_1tb_pvr_extender_last_drop_date
+,hp.ts_tv_moxi_p_last_drop_date
+,hp.ts_tv_box_nextbox_4k_pvr_p_last_drop_date
+,hp.ts_tv_box_nextbox_4k_nonpvr_r_last_drop_date
+,hp.ts_tv_box_nextbox_4k_nonpvr_p_last_drop_date
+,hp.ts_int_docsis_3_1_ac_gw_last_add_date
+,hp.ts_int_docsis_3_ac_gw_last_add_date
+,hp.ts_int_docsis_3_n_gw_last_add_date
+,hp.ts_int_docsis_3_last_add_date
+,hp.ts_int_wifi_ntwk_last_add_date
+,hp.ts_int_ethernet_card_last_add_date
+,hp.ts_int_docsis_2_last_add_date
+,hp.ts_int_dsl_last_add_date
+,hp.ts_int_docsis_2_g_gw_last_add_date
+,hp.ts_int_docsis_3_gw_e_last_add_date
+,hp.ts_int_hw_others_last_add_date
+,hp.ts_int_box_modem_p_last_add_date
+,hp.ts_int_box_modem_r_last_add_date
+,hp.ts_int_docsis_3_1_ac_gw_last_drop_date
+,hp.ts_int_docsis_3_ac_gw_last_drop_date
+,hp.ts_int_docsis_3_n_gw_last_drop_date
+,hp.ts_int_docsis_3_last_drop_date
+,hp.ts_int_wifi_ntwk_last_drop_date
+,hp.ts_int_ethernet_card_last_drop_date
+,hp.ts_int_docsis_2_last_drop_date
+,hp.ts_int_dsl_last_drop_date
+,hp.ts_int_docsis_2_g_gw_last_drop_date
+,hp.ts_int_docsis_3_gw_e_last_drop_date
+,hp.ts_int_hw_others_last_drop_date
+,hp.ts_int_box_modem_p_last_drop_date
+,hp.ts_int_box_modem_r_last_drop_date
+
+,soa.sm_num_service_truck_rolls_6m
+,soa.sm_num_reschedule_6m
+,soa.sm_num_maintenance_srv_orders_6m
+,soa.sm_num_late_service_orders_6m
+,soa.sm_num_same_day_service_orders_6m
+,soa.sm_num_no_signal_service_orders_6m
+,soa.sm_num_trouble_service_orders_6m
+,soa.sm_num_service_orders_6m
+,soa.av_num_service_truck_rolls_6m
+,soa.av_num_reschedule_6m
+,soa.av_num_maintenance_srv_orders_6m
+,soa.av_num_late_service_orders_6m
+,soa.av_num_same_day_service_orders_6m
+,soa.av_num_no_signal_service_orders_6m
+,soa.av_num_trouble_service_orders_6m
+,soa.av_num_service_orders_6m
+,soa.sm_num_service_truck_rolls_3m
+,soa.sm_num_reschedule_3m
+,soa.sm_num_maintenance_srv_orders_3m
+,soa.sm_num_late_service_orders_3m
+,soa.sm_num_same_day_service_orders_3m
+,soa.sm_num_no_signal_service_orders_3m
+,soa.sm_num_trouble_service_orders_3m
+,soa.sm_num_service_orders_3m
+,soa.av_num_service_truck_rolls_3m
+,soa.av_num_reschedule_3m
+,soa.av_num_maintenance_srv_orders_3m
+,soa.av_num_late_service_orders_3m
+,soa.av_num_same_day_service_orders_3m
+,soa.av_num_no_signal_service_orders_3m
+,soa.av_num_trouble_service_orders_3m
+,soa.av_num_service_orders_3m
+,soa.sm_num_service_truck_rolls_1m
+,soa.sm_num_reschedule_1m
+,soa.sm_num_maintenance_srv_orders_1m
+,soa.sm_num_late_service_orders_1m
+,soa.sm_num_same_day_service_orders_1m
+,soa.sm_num_no_signal_service_orders_1m
+,soa.sm_num_trouble_service_orders_1m
+,soa.sm_num_service_orders_1m
+,soa.av_num_service_truck_rolls_1m
+,soa.av_num_reschedule_1m
+,soa.av_num_maintenance_srv_orders_1m
+,soa.av_num_late_service_orders_1m
+,soa.av_num_same_day_service_orders_1m
+,soa.av_num_no_signal_service_orders_1m
+,soa.av_num_trouble_service_orders_1m
+,soa.av_num_service_orders_1m
+,soa.sm_num_service_truck_rolls_7d
+,soa.sm_num_reschedule_7d
+,soa.sm_num_maintenance_srv_orders_7d
+,soa.sm_num_late_service_orders_7d
+,soa.sm_num_same_day_service_orders_7d
+,soa.sm_num_no_signal_service_orders_7d
+,soa.sm_num_trouble_service_orders_7d
+,soa.sm_num_service_orders_7d
+,soa.av_num_service_truck_rolls_7d
+,soa.av_num_reschedule_7d
+,soa.av_num_maintenance_srv_orders_7d
+,soa.av_num_late_service_orders_7d
+,soa.av_num_same_day_service_orders_7d
+,soa.av_num_no_signal_service_orders_7d
+,soa.av_num_trouble_service_orders_7d
+,soa.av_num_service_orders_7d
+
+/*,hsi.sm_hsi_up_usage_mb_7d
+,hsi.sm_hsi_up_usage_mb_30d
+,hsi.sm_hsi_up_usage_mb_90d
+,hsi.sm_hsi_up_usage_mb_180d
+,hsi.sm_hsi_down_usage_mb_7d
+,hsi.sm_hsi_down_usage_mb_30d
+,hsi.sm_hsi_down_usage_mb_90d
+,hsi.sm_hsi_down_usage_mb_180d
+,hsi.sm_iptv_up_usage_mb_7d
+,hsi.sm_iptv_up_usage_mb_30d
+,hsi.sm_iptv_up_usage_mb_90d
+,hsi.sm_iptv_up_usage_mb_180d
+,hsi.sm_iptv_down_usage_mb_7d
+,hsi.sm_iptv_down_usage_mb_30d
+,hsi.sm_iptv_down_usage_mb_90d
+,hsi.sm_iptv_down_usage_mb_180d
+,hsi.tr_hsi_up_usage_mb_7d
+,hsi.tr_hsi_up_usage_mb_3m
+,hsi.tr_hsi_up_usage_mb_6m
+,hsi.tr_hsi_down_usage_mb_7d
+,hsi.tr_hsi_down_usage_mb_3m
+,hsi.tr_hsi_down_usage_mb_6m
+,hsi.tr_iptv_up_usage_mb_7d
+,hsi.tr_iptv_up_usage_mb_3m
+,hsi.tr_iptv_up_usage_mb_6m
+,hsi.tr_iptv_down_usage_mb_7d
+,hsi.tr_iptv_down_usage_mb_3m
+,hsi.tr_iptv_down_usage_mb_6m
+*/
+,tva.sm_tv_total_dur_hrs_1m,
+tva.sm_tv_num_genre_7d,
+tva.sm_tv_num_genre_1m,
+tva.sm_tv_max_dur_hrs_7d,
+tva.sm_tv_max_dur_hrs_1m,
+tva.sm_tv_dur_hrs_weekend_7d,
+tva.sm_tv_dur_hrs_weekend_1m,
+tva.sm_tv_dur_hrs_weekday_7d,
+tva.sm_tv_dur_hrs_weekday_1m,
+tva.sm_tv_dur_hrs_usnetwork_1m,
+tva.sm_tv_dur_hrs_unknown_7d,
+tva.sm_tv_dur_hrs_unknown_1m,
+tva.sm_tv_dur_hrs_sports_7d,
+tva.sm_tv_dur_hrs_movies_7d,
+tva.sm_tv_dur_hrs_movies_1m,
+tva.sm_tv_dur_hrs_600to1000_7d,
+tva.sm_tv_dur_hrs_600to1000_1m,
+tva.sm_tv_dur_hrs_2300to200_7d,
+tva.sm_tv_dur_hrs_2300to200_1m,
+tva.sm_tv_dur_hrs_200to600_7d,
+tva.sm_tv_dur_hrs_200to600_1m,
+tva.sm_tv_dur_hrs_1930to2300_7d,
+tva.sm_tv_dur_hrs_1930to2300_1m,
+tva.sm_tv_dur_hrs_1630to1930_7d,
+tva.sm_tv_dur_hrs_1630to1930_1m,
+tva.sm_tv_dur_hrs_1000to1630_7d,
+tva.sm_tv_dur_hrs_1000to1630_1m,
+tva.sm_tv_cnt_sess_weekday_7d,
+tva.sm_tv_cnt_sess_weather_1m,
+tva.sm_tv_cnt_sess_unknown_1m,
+tva.sm_tv_cnt_sess_spirit_1m,
+tva.sm_tv_cnt_sess_news_learn_7d,
+tva.sm_tv_cnt_sess_kids_family_1m,
+tva.sm_tv_cnt_sess_ge4hrs_1m,
+tva.sm_tv_cnt_sess_5min4hrs_7d,
+tva.sm_tv_cnt_sess_5min4hrs_1m,
+tva.sm_tv_avg_dur_hrs_7d,
+tva.sm_tv_avg_dur_hrs_1m,
+tva.min_tv_total_dur_hrs_7d,
+tva.min_tv_total_dur_hrs_1m,
+tva.min_tv_num_channel_7d,
+tva.min_tv_max_dur_hrs_7d,
+tva.min_tv_max_dur_hrs_1m,
+tva.min_tv_dur_hrs_weekend_7d,
+tva.min_tv_dur_hrs_unknown_7d,
+tva.min_tv_dur_hrs_unknown_1m,
+tva.min_tv_dur_hrs_movies_7d,
+tva.min_tv_dur_hrs_cannetwork_7d,
+tva.min_tv_dur_hrs_600to1000_7d,
+tva.min_tv_dur_hrs_600to1000_1m,
+tva.min_tv_dur_hrs_2300to200_1m,
+tva.min_tv_dur_hrs_1930to2300_7d,
+tva.min_tv_dur_hrs_1930to2300_1m,
+tva.min_tv_dur_hrs_1630to1930_7d,
+tva.min_tv_dur_hrs_1630to1930_1m,
+tva.min_tv_dur_hrs_1000to1630_7d,
+tva.min_tv_dur_hrs_1000to1630_1m,
+tva.min_tv_cnt_sess_weekday_1m,
+tva.min_tv_cnt_sess_usnetwork_1m,
+tva.min_tv_cnt_sess_unknown_1m,
+tva.min_tv_cnt_sess_sports_1m,
+tva.min_tv_cnt_sess_5min4hrs_7d,
+tva.min_tv_cnt_sess_5min4hrs_1m,
+tva.min_tv_avg_dur_hrs_7d,
+tva.min_tv_avg_dur_hrs_1m,
+tva.max_tv_total_dur_hrs_7d,
+tva.max_tv_num_genre_1m,
+tva.max_tv_num_channel_1m,
+tva.max_tv_max_dur_hrs_7d,
+tva.max_tv_max_dur_hrs_1m,
+tva.max_tv_dur_hrs_weekend_1m,
+tva.max_tv_dur_hrs_weekday_7d,
+tva.max_tv_dur_hrs_weekday_1m,
+tva.max_tv_dur_hrs_weather_1m,
+tva.max_tv_dur_hrs_usnetwork_7d,
+tva.max_tv_dur_hrs_usnetwork_1m,
+tva.max_tv_dur_hrs_unknown_1m,
+tva.max_tv_dur_hrs_sports_7d,
+tva.max_tv_dur_hrs_sports_1m,
+tva.max_tv_dur_hrs_radio_7d,
+tva.max_tv_dur_hrs_radio_1m,
+tva.max_tv_dur_hrs_news_learn_1m,
+tva.max_tv_dur_hrs_music_1m,
+tva.max_tv_dur_hrs_multicul_1m,
+tva.max_tv_dur_hrs_movies_7d,
+tva.max_tv_dur_hrs_movies_1m,
+tva.max_tv_dur_hrs_life_real_7d,
+tva.max_tv_dur_hrs_life_real_1m,
+tva.max_tv_dur_hrs_kids_family_7d,
+tva.max_tv_dur_hrs_kids_family_1m,
+tva.max_tv_dur_hrs_cannetwork_7d,
+tva.max_tv_dur_hrs_cannetwork_1m,
+tva.max_tv_dur_hrs_600to1000_7d,
+tva.max_tv_dur_hrs_600to1000_1m,
+tva.max_tv_dur_hrs_2300to200_7d,
+tva.max_tv_dur_hrs_2300to200_1m,
+tva.max_tv_dur_hrs_200to600_7d,
+tva.max_tv_dur_hrs_200to600_1m,
+tva.max_tv_dur_hrs_1930to2300_7d,
+tva.max_tv_dur_hrs_1930to2300_1m,
+tva.max_tv_dur_hrs_1630to1930_7d,
+tva.max_tv_dur_hrs_1630to1930_1m,
+tva.max_tv_dur_hrs_1000to1630_7d,
+tva.max_tv_dur_hrs_1000to1630_1m,
+tva.max_tv_cnt_sess_weekend_7d,
+tva.max_tv_cnt_sess_weekend_1m,
+tva.max_tv_cnt_sess_weekday_7d,
+tva.max_tv_cnt_sess_weather_7d,
+tva.max_tv_cnt_sess_weather_1m,
+tva.max_tv_cnt_sess_usnetwork_7d,
+tva.max_tv_cnt_sess_usnetwork_1m,
+tva.max_tv_cnt_sess_unknown_7d,
+tva.max_tv_cnt_sess_sports_7d,
+tva.max_tv_cnt_sess_sports_1m,
+tva.max_tv_cnt_sess_spirit_1m,
+tva.max_tv_cnt_sess_radio_1m,
+tva.max_tv_cnt_sess_multicul_7d,
+tva.max_tv_cnt_sess_multicul_1m,
+tva.max_tv_cnt_sess_lt5min_7d,
+tva.max_tv_cnt_sess_kids_family_1m,
+tva.max_tv_cnt_sess_cannetwork_1m,
+tva.max_tv_cnt_sess_5min4hrs_7d,
+tva.max_tv_cnt_sess_5min4hrs_1m,
+tva.max_tv_avg_dur_hrs_7d,
+tva.max_tv_avg_dur_hrs_1m,
+tva.av_tv_total_dur_hrs_7d,
+tva.av_tv_total_dur_hrs_1m,
+tva.av_tv_num_genre_7d,
+tva.av_tv_num_genre_1m,
+tva.av_tv_num_channel_1m,
+tva.av_tv_max_dur_hrs_7d,
+tva.av_tv_max_dur_hrs_1m,
+tva.av_tv_dur_hrs_weekend_7d,
+tva.av_tv_dur_hrs_weekend_1m,
+tva.av_tv_dur_hrs_weekday_1m,
+tva.av_tv_dur_hrs_weather_7d,
+tva.av_tv_dur_hrs_weather_1m,
+tva.av_tv_dur_hrs_usnetwork_1m,
+tva.av_tv_dur_hrs_unknown_7d,
+tva.av_tv_dur_hrs_unknown_1m,
+tva.av_tv_dur_hrs_sports_7d,
+tva.av_tv_dur_hrs_sports_1m,
+tva.av_tv_dur_hrs_news_learn_7d,
+tva.av_tv_dur_hrs_news_learn_1m,
+tva.av_tv_dur_hrs_multicul_7d,
+tva.av_tv_dur_hrs_multicul_1m,
+tva.av_tv_dur_hrs_movies_1m,
+tva.av_tv_dur_hrs_life_real_7d,
+tva.av_tv_dur_hrs_life_real_1m,
+tva.av_tv_dur_hrs_cannetwork_1m,
+tva.av_tv_dur_hrs_600to1000_7d,
+tva.av_tv_dur_hrs_600to1000_1m,
+tva.av_tv_dur_hrs_2300to200_7d,
+tva.av_tv_dur_hrs_2300to200_1m,
+tva.av_tv_dur_hrs_200to600_7d,
+tva.av_tv_dur_hrs_200to600_1m,
+tva.av_tv_dur_hrs_1930to2300_7d,
+tva.av_tv_dur_hrs_1930to2300_1m,
+tva.av_tv_dur_hrs_1630to1930_7d,
+tva.av_tv_dur_hrs_1630to1930_1m,
+tva.av_tv_dur_hrs_1000to1630_7d,
+tva.av_tv_dur_hrs_1000to1630_1m,
+tva.av_tv_cnt_sess_weekend_7d,
+tva.av_tv_cnt_sess_weekend_1m,
+tva.av_tv_cnt_sess_weekday_7d,
+tva.av_tv_cnt_sess_weather_7d,
+tva.av_tv_cnt_sess_weather_1m,
+tva.av_tv_cnt_sess_shop_1m,
+tva.av_tv_cnt_sess_radio_7d,
+tva.av_tv_cnt_sess_radio_1m,
+tva.av_tv_cnt_sess_other_1m,
+tva.av_tv_cnt_sess_news_learn_7d,
+tva.av_tv_cnt_sess_multicul_1m,
+tva.av_tv_cnt_sess_movies_1m,
+tva.av_tv_cnt_sess_kids_family_1m,
+tva.av_tv_cnt_sess_ge4hrs_7d,
+tva.av_tv_cnt_sess_ge4hrs_1m,
+tva.av_tv_cnt_sess_game_1m,
+tva.av_tv_cnt_sess_cannetwork_1m,
+tva.av_tv_cnt_sess_5min4hrs_7d,
+tva.av_tv_cnt_sess_5min4hrs_1m,
+tva.av_tv_avg_dur_hrs_7d,
+tva.av_tv_avg_dur_hrs_1m,
+tv.tv_num_channel,
+tv.tv_dur_hrs_weekend,
+tv.tv_dur_hrs_unknown,
+tv.tv_dur_hrs_sports,
+tv.tv_dur_hrs_1630to1930,
+tv.tv_dur_hrs_1000to1630,
+tv.min_tv_dur_hrs_usnetwork,
+tv.min_tv_dur_hrs_life_real,
+tv.max_tv_dur_hrs_weekday,
+tv.max_tv_dur_hrs_usnetwork,
+tv.max_tv_dur_hrs_unknown,
+tv.max_tv_dur_hrs_sports,
+tv.max_tv_dur_hrs_radio,
+tv.max_tv_dur_hrs_news_learn,
+tv.max_tv_dur_hrs_multicul,
+tv.max_tv_dur_hrs_movies,
+tv.max_tv_dur_hrs_life_real,
+tv.max_tv_dur_hrs_cannetwork,
+tv.avg_tv_dur_hrs_weekend,
+tv.avg_tv_dur_hrs_news_learn,
+tv.avg_tv_dur_hrs_life_real,
+tv.avg_tv_dur_hrs_kids_family,
+tv.avg_tv_dur_hrs_cannetwork,
+tv.avg_tv_dur_hrs_600to1000,
+tv.avg_tv_dur_hrs_200to600,
+tv.avg_tv_dur_hrs_1930to2300,
+tv.avg_tv_dur_hrs_1630to1930,
+tv.avg_tv_dur_hrs_1000to1630,
+tva.sm_tv_total_dur_hrs_7d,
+tva.sm_tv_dur_hrs_weather_7d,
+tva.sm_tv_dur_hrs_cannetwork_7d,
+tva.sm_tv_cnt_sess_weekend_1m,
+tva.sm_tv_cnt_sess_weekday_1m,
+tva.sm_tv_cnt_sess_usnetwork_1m,
+tva.sm_tv_cnt_sess_unknown_7d,
+tva.sm_tv_cnt_sess_lt5min_7d,
+tva.sm_tv_cnt_sess_ge4hrs_7d,
+tva.min_tv_dur_hrs_weekend_1m,
+tva.min_tv_dur_hrs_weekday_7d,
+tva.min_tv_dur_hrs_weekday_1m,
+tva.min_tv_dur_hrs_cannetwork_1m,
+tva.min_tv_dur_hrs_2300to200_7d,
+tva.min_tv_dur_hrs_200to600_7d,
+tva.min_tv_dur_hrs_200to600_1m,
+tva.min_tv_cnt_sess_weekend_7d,
+tva.min_tv_cnt_sess_weekend_1m,
+tva.min_tv_cnt_sess_cannetwork_1m,
+tva.max_tv_num_channel_7d,
+tva.max_tv_dur_hrs_weekend_7d,
+tva.max_tv_dur_hrs_weather_7d,
+tva.max_tv_dur_hrs_unknown_7d,
+tva.max_tv_dur_hrs_music_7d,
+tva.max_tv_cnt_sess_unknown_1m,
+tva.max_tv_cnt_sess_music_1m,
+tva.max_tv_cnt_sess_lt5min_1m,
+tva.max_tv_cnt_sess_ge4hrs_7d,
+tva.max_tv_cnt_sess_ge4hrs_1m,
+tva.max_tv_cnt_sess_game_1m,
+tva.max_tv_cnt_sess_cannetwork_7d,
+tva.av_tv_dur_hrs_weekday_7d,
+tva.av_tv_dur_hrs_usnetwork_7d,
+tva.av_tv_dur_hrs_kids_family_1m,
+tva.av_tv_dur_hrs_game_1m,
+tva.av_tv_dur_hrs_french_1m,
+tva.av_tv_dur_hrs_cannetwork_7d,
+tva.av_tv_cnt_sess_unknown_1m,
+tva.av_tv_cnt_sess_sports_1m,
+tva.av_tv_cnt_sess_other_7d,
+tva.av_tv_cnt_sess_music_1m,
+tva.av_tv_cnt_sess_lt5min_1m,
+tva.av_tv_cnt_sess_life_real_1m,
+tva.av_tv_cnt_sess_french_7d,
+tva.av_tv_cnt_sess_cannetwork_7d,
+tv.tv_total_dur_hrs,
+tv.tv_dur_hrs_weekday,
+tv.tv_dur_hrs_usnetwork,
+tv.tv_dur_hrs_music,
+tv.tv_dur_hrs_600to1000,
+tv.tv_dur_hrs_2300to200,
+tv.tv_dur_hrs_200to600,
+tv.tv_dur_hrs_1930to2300,
+tv.tv_cnt_sess_weekend,
+tv.tv_cnt_sess_unknown,
+tv.tv_cnt_sess_radio,
+tv.tv_cnt_sess_lt5min,
+tv.tv_cnt_sess_ge4hrs,
+tv.tv_cnt_sess_french,
+tv.tv_cnt_sess_5min4hrs,
+tv.min_tv_dur_hrs_unknown,
+tv.avg_tv_dur_hrs_weekday,
+tv.avg_tv_dur_hrs_weather,
+tv.avg_tv_dur_hrs_unknown,
+tv.avg_tv_dur_hrs_game,
+tv.avg_tv_dur_hrs_2300to200,
+tva.sm_tv_cnt_sess_lt5min_6m,
+tva.sm_tv_cnt_sess_5min4hrs_6m,
+tva.sm_tv_cnt_sess_ge4hrs_6m,
+tva.sm_tv_num_genre_6m,
+tva.sm_tv_num_channel_6m,
+tva.sm_min_tv_dur_hrs_weekday_6m,
+tva.sm_min_tv_dur_hrs_weekend_6m,
+tva.sm_tv_cnt_sess_lt5min_3m,
+tva.sm_tv_cnt_sess_5min4hrs_3m,
+tva.sm_tv_cnt_sess_ge4hrs_3m,
+tva.sm_tv_num_genre_3m,
+tva.sm_tv_num_channel_3m,
+tva.sm_tv_cnt_sess_weekday_3m,
+tva.sm_tv_cnt_sess_weekend_3m,
+tva.sm_tv_cnt_sess_lt5min_1m,
+tva.sm_tv_num_channel_1m,
+tva.sm_tv_num_channel_7d,
+greatest(mom.pst_int_mths_disc_end,mom.pst_tve_mths_disc_end, mom.pst_rhp_mths_disc_end) as pst_mths_disc_end,
+case when mom.pre_int_serv_disc = mom.pst_int_serv_disc and mom.pre_int_serv_disc < 0 then cast('No_Int_Disc_Chng' as varchar(30))
+     when mom.pre_int_serv_disc > mom.pst_int_serv_disc and mom.pre_int_serv_disc < 0 and mom.pst_int_serv_disc < 0 then cast('Int_Disc_Increased' as varchar(30))
+	 when mom.pre_int_serv_disc < mom.pst_int_serv_disc and mom.pre_int_serv_disc < 0 and mom.pst_int_serv_disc < 0 then cast('Int_Disc_Reduced' as varchar(30))
+	 else cast('No_Discount' as varchar(30)) end as Chng_Int_Serv_Disc, 
+(-1)*(mom.pst_int_serv_disc/mom.pst_int_serv_msf) as Pst_Int_Disc_Rate ,
+(-1)*(mom.pre_int_serv_disc/mom.pre_int_serv_msf) as Pre_Int_Disc_Rate , 
+(mom.pst_int_serv_net - mom.pre_int_serv_net) as Chng_Int_Serv_Net,
+(mom.pst_int_equip_msf - mom.pre_int_equip_msf) as Chng_Int_Equip_MSF,
+(mom.pst_int_equip_disc - mom.pre_int_equip_disc) as Chng_Int_Equip_Disc,
+(mom.pst_int_equip_net - mom.pre_int_equip_net) as Chng_Int_Equip_Net, 
+(mom.pst_tve_gross_msf - mom.pre_tve_gross_msf) as Chng_TVE_Gross_MSF,
+(mom.pst_tve_discount - mom.pre_tve_discount) as Chng_TVE_Disc,
+(mom.pst_tve_net_msf - mom.pre_tve_net_msf) as Chng_TVE_Net_MSF, 
+mom.pst_int_mths_disc_end as EOP_INT_Months,
+mom.pst_rhp_mths_disc_end as EOP_RHP_Months,
+mom.pst_tve_mths_disc_end as EOP_TVE_Months,
+case when mom.pre_tve_tier = mom.pst_tve_tier then cast('Same_TVE_Tier' as varchar(30)) else cast('Chng_TVE_Tier' as varchar(30)) end as Chng_TVE_Tier,
+(mom.pst_tve_tier_msf - mom.pre_tve_tier_msf) as Chng_TV_Tier_MSF,
+(mom.pst_tve_tier_disc - mom.pre_tve_tier_disc) as Chng_TVE_Tier_Disc,
+(mom.pst_tve_tier_net - mom.pre_tve_tier_net) as Chng_TVE_Tier_Net,
+(mom.pst_tve_serv_msf - mom.pre_tve_serv_msf) as Chng_tve_serv_msf,
+(mom.pst_tve_serv_disc - mom.pre_tve_serv_disc) as Chng_tve_serv_disc,
+(mom.pst_tve_serv_net - mom.pre_tve_serv_net) as Chng_tve_serv_net,
+(mom.pst_tve_equip_msf - mom.pre_tve_equip_msf) as Chng_tve_equip_msf,
+(mom.pst_tve_equip_disc - mom.pre_tve_equip_disc) as Chng_tve_equip_disc,
+(mom.pst_tve_equip_net - mom.pre_tve_equip_net) as Chng_tve_equip_net,
+(mom.pst_rhp_gross_msf - mom.pre_rhp_gross_msf) as Chng_rhp_gross_msf,
+(mom.pst_rhp_discount - mom.pre_rhp_discount) as Chng_rhp_discount,
+(mom.pst_rhp_net_msf - mom.pre_rhp_net_msf) as Chng_rhp_net_msf
+FROM mlmodel_data.CG_DAT4_CH_IGN_bdl_up_202109 a left join resi_mlmodel.customer_profile cp 
+on (a.cr_key=cp.cr_key and a.customer_location_id=cp.customer_location_id and cp.build_date  ='2021-09-30')
+left outer join resi_mlmodel.customer_profile_agg cpa on (a.cr_key=cpa.cr_key and a.customer_location_id=cpa.customer_location_id and cpa.build_date  ='2021-09-30' )
+left outer join resi_mlmodel.product_profile pp on (a.cr_key=pp.cr_key and a.customer_location_id=pp.customer_location_id and pp.build_date  ='2021-09-30')
+left outer join (select *,row_number() over (partition by cr_key,customer_location_id,build_date order by pre_multi_product_name desc) as rank from resi_mlmodel.ibro_revenue_mom) mom
+on (a.cr_key=mom.cr_key and a.customer_location_id=mom.customer_location_id and mom.rank=1 and mom.build_date='2021-09-30')
+left outer join resi_mlmodel.cbc_interactions cbc on (a.cr_key=cbc.cr_key and a.customer_location_id=cbc.customer_location_id and cbc.build_date='2021-09-30')
+left outer join resi_mlmodel.revenue_agg ra on (a.cr_key=ra.cr_key and a.customer_location_id=ra.customer_location_id and ra.build_date='2021-09-30')
+left outer join resi_mlmodel.crm_interactions_agg crma on (a.cr_key=crma.cr_key and a.customer_location_id=crma.customer_location_id and crma.build_date='2021-09-30')
+left outer join resi_mlmodel.hardware_profile hp on (a.cr_key=hp.cr_key and a.customer_location_id=hp.customer_location_id and hp.build_date  ='2021-09-30')
+left outer join resi_mlmodel.revenue r on (a.cr_key=r.cr_key and a.customer_location_id=r.customer_location_id and r.build_date='2021-09-30')
+left outer join resi_mlmodel.cbc_interactions_agg cbca on (a.cr_key=cbca.cr_key and a.customer_location_id=cbca.customer_location_id and cbca.build_date='2021-09-30')
+left outer join resi_mlmodel.product_profile_agg ppa on (a.cr_key=ppa.cr_key and a.customer_location_id=ppa.customer_location_id and ppa.build_date='2021-09-30')
+left outer join resi_mlmodel.crm_interactions crm on (a.cr_key=crm.cr_key and a.customer_location_id=crm.customer_location_id and crm.build_date='2021-09-30')
+left outer join resi_mlmodel.service_orders_agg soa on (a.cr_key=soa.cr_key and a.customer_location_id=soa.customer_location_id and soa.build_date='2021-09-30')
+/*left outer join resi_mlmodel.hsi_usage_agg_can hsi on (a.cr_key=hsi.cr_key and a.customer_location_id=hsi.customer_location_id  and hsi.build_date='2021-09-30')*/
+left outer join resi_mlmodel.tv_usage_agg tva on (a.cr_key=tva.cr_key and a.customer_location_id=tva.customer_location_id and tva.build_date='2021-09-30')
+left outer join resi_mlmodel.tv_usage tv on (a.cr_key=tv.cr_key and a.customer_location_id=tv.customer_location_id and tv.build_date='2021-09-30');
+
+/*Add Data usage*/
+create table mlmodel_data.CG_DAT6_CH_IGN_bdl_up_202109 as
+select cr_key,
+customer_location_id,
+sum(SM_HSI_UP_USAGE_MB_7D) as SM_HSI_UP_USAGE_MB_7D,
+sum(SM_HSI_UP_USAGE_MB_30D) as SM_HSI_UP_USAGE_MB_30D,
+sum(SM_HSI_UP_USAGE_MB_90D) as SM_HSI_UP_USAGE_MB_90D,
+sum(SM_HSI_UP_USAGE_MB_180D) as SM_HSI_UP_USAGE_MB_180D,
+sum(SM_HSI_DOWN_USAGE_MB_7D) as SM_HSI_DOWN_USAGE_MB_7D,
+sum(SM_HSI_DOWN_USAGE_MB_30D) as SM_HSI_DOWN_USAGE_MB_30D,
+sum(SM_HSI_DOWN_USAGE_MB_90D) as SM_HSI_DOWN_USAGE_MB_90D,
+sum(SM_HSI_DOWN_USAGE_MB_180D) as SM_HSI_DOWN_USAGE_MB_180D,
+sum(SM_IPTV_UP_USAGE_MB_7D) as SM_IPTV_UP_USAGE_MB_7D,
+sum(SM_IPTV_UP_USAGE_MB_30D) as SM_IPTV_UP_USAGE_MB_30D,
+sum(SM_IPTV_UP_USAGE_MB_90D) as SM_IPTV_UP_USAGE_MB_90D,
+sum(SM_IPTV_UP_USAGE_MB_180D) as SM_IPTV_UP_USAGE_MB_180D,
+sum(SM_IPTV_DOWN_USAGE_MB_7D) as SM_IPTV_DOWN_USAGE_MB_7D,
+sum(SM_IPTV_DOWN_USAGE_MB_30D) as SM_IPTV_DOWN_USAGE_MB_30D,
+sum(SM_IPTV_DOWN_USAGE_MB_180D) as SM_IPTV_DOWN_USAGE_MB_180D,
+sum(SM_RHP_UP_USAGE_MB_7D) as SM_RHP_UP_USAGE_MB_7D,
+sum(SM_RHP_UP_USAGE_MB_30D) as SM_RHP_UP_USAGE_MB_30D,
+sum(SM_RHP_UP_USAGE_MB_90D) as SM_RHP_UP_USAGE_MB_90D,
+sum(SM_RHP_UP_USAGE_MB_180D) as SM_RHP_UP_USAGE_MB_180D,
+sum(SM_RHP_DOWN_USAGE_MB_7D) as SM_RHP_DOWN_USAGE_MB_7D,
+sum(SM_RHP_DOWN_USAGE_MB_90D) as SM_RHP_DOWN_USAGE_MB_90D,
+sum(SM_RHP_DOWN_USAGE_MB_180D) as SM_RHP_DOWN_USAGE_MB_180D,
+avg(TR_HSI_UP_USAGE_MB_7D) as TR_HSI_UP_USAGE_MB_7D,
+avg(TR_HSI_UP_USAGE_MB_3M) as TR_HSI_UP_USAGE_MB_3M,
+avg(TR_HSI_UP_USAGE_MB_6M) as TR_HSI_UP_USAGE_MB_6M,
+avg(TR_HSI_DOWN_USAGE_MB_7D) as TR_HSI_DOWN_USAGE_MB_7D,
+avg(TR_HSI_DOWN_USAGE_MB_3M) as TR_HSI_DOWN_USAGE_MB_3M,
+avg(TR_HSI_DOWN_USAGE_MB_6M) as TR_HSI_DOWN_USAGE_MB_6M,
+avg(TR_IPTV_UP_USAGE_MB_7D) as TR_IPTV_UP_USAGE_MB_7D,
+avg(TR_IPTV_UP_USAGE_MB_3M) as TR_IPTV_UP_USAGE_MB_3M,
+avg(TR_IPTV_UP_USAGE_MB_6M) as TR_IPTV_UP_USAGE_MB_6M,
+avg(TR_IPTV_DOWN_USAGE_MB_7D) as TR_IPTV_DOWN_USAGE_MB_7D,
+avg(TR_IPTV_DOWN_USAGE_MB_3M) as TR_IPTV_DOWN_USAGE_MB_3M,
+avg(TR_IPTV_DOWN_USAGE_MB_6M) as TR_IPTV_DOWN_USAGE_MB_6M,
+avg(TR_RHP_UP_USAGE_MB_7D) as TR_RHP_UP_USAGE_MB_7D,
+avg(TR_RHP_UP_USAGE_MB_3M) as TR_RHP_UP_USAGE_MB_3M,
+avg(TR_RHP_UP_USAGE_MB_6M) as TR_RHP_UP_USAGE_MB_6M,
+avg(TR_RHP_DOWN_USAGE_MB_7D) as TR_RHP_DOWN_USAGE_MB_7D,
+avg(TR_RHP_DOWN_USAGE_MB_3M) as TR_RHP_DOWN_USAGE_MB_3M,
+avg(TR_RHP_DOWN_USAGE_MB_6M) as TR_RHP_DOWN_USAGE_MB_6M,
+sum(SM_IPTV_DOWN_USAGE_MB_90D) as SM_IPTV_DOWN_USAGE_MB_90D,
+sum(SM_RHP_DOWN_USAGE_MB_30D) as SM_RHP_DOWN_USAGE_MB_30D
+from resi_mlmodel.hsi_usage_agg_can
+where build_date='2021-09-30'
+group by 1,2;
+ 
+create table mlmodel_data.CG_DAT7_CH_IGN_bdl_up_202109 as
+select 
+a.*,
+b.SM_HSI_UP_USAGE_MB_7D,
+b.SM_HSI_UP_USAGE_MB_30D,
+b.SM_HSI_UP_USAGE_MB_90D,
+b.SM_HSI_UP_USAGE_MB_180D,
+b.SM_HSI_DOWN_USAGE_MB_7D,
+b.SM_HSI_DOWN_USAGE_MB_30D,
+b.SM_HSI_DOWN_USAGE_MB_90D,
+b.SM_HSI_DOWN_USAGE_MB_180D,
+b.SM_IPTV_UP_USAGE_MB_7D,
+b.SM_IPTV_UP_USAGE_MB_30D,
+b.SM_IPTV_UP_USAGE_MB_90D,
+b.SM_IPTV_UP_USAGE_MB_180D,
+b.SM_IPTV_DOWN_USAGE_MB_7D,
+b.SM_IPTV_DOWN_USAGE_MB_30D,
+b.SM_IPTV_DOWN_USAGE_MB_180D,
+b.SM_RHP_UP_USAGE_MB_7D,
+b.SM_RHP_UP_USAGE_MB_30D,
+b.SM_RHP_UP_USAGE_MB_90D,
+b.SM_RHP_UP_USAGE_MB_180D,
+b.SM_RHP_DOWN_USAGE_MB_7D,
+b.SM_RHP_DOWN_USAGE_MB_90D,
+b.SM_RHP_DOWN_USAGE_MB_180D,
+b.TR_HSI_UP_USAGE_MB_7D,
+b.TR_HSI_UP_USAGE_MB_3M,
+b.TR_HSI_UP_USAGE_MB_6M,
+b.TR_HSI_DOWN_USAGE_MB_7D,
+b.TR_HSI_DOWN_USAGE_MB_3M,
+b.TR_HSI_DOWN_USAGE_MB_6M,
+b.TR_IPTV_UP_USAGE_MB_7D,
+b.TR_IPTV_UP_USAGE_MB_3M,
+b.TR_IPTV_UP_USAGE_MB_6M,
+b.TR_IPTV_DOWN_USAGE_MB_7D,
+b.TR_IPTV_DOWN_USAGE_MB_3M,
+b.TR_IPTV_DOWN_USAGE_MB_6M,
+b.TR_RHP_UP_USAGE_MB_7D,
+b.TR_RHP_UP_USAGE_MB_3M,
+b.TR_RHP_UP_USAGE_MB_6M,
+b.TR_RHP_DOWN_USAGE_MB_7D,
+b.TR_RHP_DOWN_USAGE_MB_3M,
+b.TR_RHP_DOWN_USAGE_MB_6M,
+b.SM_IPTV_DOWN_USAGE_MB_90D,
+b.SM_RHP_DOWN_USAGE_MB_30D
+from mlmodel_data.CG_DAT5_CH_IGN_bdl_up_202109 a left join mlmodel_data.CG_DAT6_CH_IGN_bdl_up_202109 b
+on a.cr_key=b.cr_key and a.customer_location_id=b.customer_location_id;
+
+/*Add OM*/
+CREATE TABLE mlmodel_data.DAT2_OM_BB_TV_AGG_30_202109 AS
+SELECT   post_evar16
+
+/*General*/
+,SUM(CASE WHEN post_evar4 LIKE '%billing-and-payments%' or post_evar4 LIKE '%payment%' or post_evar4 LIKE '%bill%'           		THEN 1 ELSE 0  END)  AS BillPayments_30
+,SUM(CASE WHEN post_evar4 LIKE '%account%'             		THEN 1 ELSE 0  END)  AS account_30
+,SUM(CASE WHEN post_evar4 LIKE '%bill%'             		THEN 1 ELSE 0  END)  AS bill_30
+,SUM(CASE WHEN post_evar4 LIKE '%registration%'             		THEN 1 ELSE 0  END)  AS registration_30
+,SUM(CASE WHEN post_evar4 LIKE '%signin%'             		THEN 1 ELSE 0  END)  AS signin_30
+,SUM(CASE WHEN post_evar4 LIKE '%shop%'             		THEN 1 ELSE 0  END)  AS shop_30
+,SUM(CASE WHEN post_evar4 LIKE '%support%'             		THEN 1 ELSE 0  END)  AS support_30
+,SUM(CASE WHEN post_evar4 LIKE '%service%'             		THEN 1 ELSE 0  END)  AS service_30
+
+/*Risk*/
+/*,SUM(CASE WHEN post_evar4 in (&Risk_pages) 	THEN 1 ELSE 0  END)  AS risk_pgs_30
+*/,SUM(CASE WHEN post_evar4 LIKE '%cancel%' 	THEN 1 ELSE 0  END)  AS Cancel_30
+,SUM(CASE WHEN post_evar4 LIKE '%claim%' 	THEN 1 ELSE 0  END)  AS Claim_30
+
+/*TV*/
+,SUM(CASE WHEN post_evar4 LIKE '%R:home:cable tv%' 
+           OR  post_evar4 LIKE '%R:home:tv%'
+             OR  post_evar4 LIKE '%R:shop:cable tv%'
+             OR  post_evar4 LIKE '%R:shop:tv%'                      THEN 1 ELSE 0  END)  AS NUMV_TV_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:how to order%'                THEN 1 ELSE 0  END)  AS NUMV_HOW_TO_ORDER_TV_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:packages%'                    THEN 1 ELSE 0  END)  AS NUMV_TV_PKG_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:promotions%'                  THEN 1 ELSE 0  END)  AS NUMV_TV_PROMO_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:4k%'                          THEN 1 ELSE 0  END)  AS NUMV_4K_TV_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:anyplacetv%'                  THEN 1 ELSE 0  END)  AS NUMV_ANYPLACE_TV_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:compare%'                     THEN 1 ELSE 0  END)  AS NUMV_COMPARE_TV_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:hardware%'                    THEN 1 ELSE 0  END)  AS NUMV_TV_HARDWARE_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:packages and pricing%'        THEN 1 ELSE 0  END)  AS NUMV_TV_PKGE_PRCNG_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:promotions:free preview%'     THEN 1 ELSE 0  END)  AS NUMV_TV_FREE_PROMO_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:starter-package%'             THEN 1 ELSE 0  END)  AS NUMV_TV_START_PKGE_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:tmn%'                         THEN 1 ELSE 0  END)  AS NUMV_TV_TMN_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv-package%' or post_evar4 LIKE '%Change TV Package%'         		THEN 1 ELSE 0  END)  AS tv_package_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv'             		THEN 1 ELSE 0  END)  AS tv_30
+
+/*TMN, Sports and MultiCultural*/
+,SUM(CASE WHEN post_evar4 LIKE '%multicultural%'             THEN 1 ELSE 0  END)  AS NUMV_MULTIC_PG_30
+,SUM(CASE WHEN post_evar4 LIKE '%sports%'             		THEN 1 ELSE 0  END)  AS NUMV_Sports_PG_30
+,SUM(CASE WHEN post_evar4 LIKE '%TMN%' or post_evar4 LIKE '%tmn%'            THEN 1 ELSE 0  END)  AS NUMV_TMN_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%ignite%bundles%' 
+           OR  post_evar4 LIKE '%ignite%bundle%'
+             OR  post_evar4 LIKE '%ignite%TV%'
+             OR  post_evar4 LIKE '%ignite%tv%'    OR  post_evar4 LIKE '%ignite%Bundle%'                   THEN 1 ELSE 0  END)  AS NUMV_IGN_BUNDL_30
+
+/*INTERNET*/
+
+,SUM(CASE WHEN post_evar4 LIKE '%R:accueil:internet%' 
+            OR post_evar4 LIKE '%R:home:internet%'
+               OR post_evar4 LIKE '%R:internet:%'
+               OR post_evar4 LIKE '%R:shop:internet%'                THEN 1 ELSE 0  END)  AS NUMV_BB_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:forfaits et tarifs%'
+            OR post_evar4 LIKE '%internet:packages & pricing%'    THEN 1 ELSE 0  END)  AS NUMV_PKG_PRCNG_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:modems et routeurs%'
+            OR post_evar4 LIKE '%internet:modems & routers%'      THEN 1 ELSE 0  END)  AS NUMV_BB_MODM_RTRS_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:promotions%'            THEN 1 ELSE 0  END)  AS NUMV_BB_PROMO_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:gaming%'                THEN 1 ELSE 0  END)  AS NUMV_BB_GMNG_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet services:high speed%'   THEN 1 ELSE 0  END)  AS NUMV_BB_HGH_SPD_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:story%'                 THEN 1 ELSE 0  END)  AS NUMV_BB_STRY_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles%'                        THEN 1 ELSE 0  END)  AS NUMV_BNDL_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles:tv-internet%'            THEN 1 ELSE 0  END)  AS NUMV_BNDL_TV_BB_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles:packages & pricing%'     THEN 1 ELSE 0  END)  AS NUMV_BNDL_PKG_PRCNG_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles:promotions%'             THEN 1 ELSE 0  END)  AS NUMV_BNDL_PROMO_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet'             		THEN 1 ELSE 0  END)  AS internet_30
+
+/*SHM*/
+,SUM(CASE WHEN post_evar4 LIKE '%home monitoring google%'             THEN 1 ELSE 0  END)  AS NUMV_SHM_google_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%smart-home-monitoring%'             THEN 1 ELSE 0  END)  AS NUMV_SHM_PG_30
+
+,SUM(CASE WHEN post_evar4 LIKE '%home monitoring%'             THEN 1 ELSE 0  END)  AS NUMV_HM_PG_30
+
+FROM omniture.RCP_R_PROD
+WHERE /*post_evar3 != ''
+AND*/ DATE_PART > TO_DATE('2021-09-01')
+AND  DATE_PART <= TO_DATE('2021-09-30')
+/*DATE_PART >= TO_DATE("&START_DT_30")
+AND  DATE_PART < TO_DATE("LIMIT_DT")*/
+GROUP BY post_evar16;
+
+CREATE TABLE mlmodel_data.DAT3_OM_BB_TV_AGG_30_202109 AS
+SELECT  
+A.*,
+B.account,
+B.ecid
+FROM mlmodel_data.DAT2_OM_BB_TV_AGG_30_202109 A INNER JOIN hash_lookup.ECID_BAN_CAN B
+ON A.post_evar16 = B.hash_account;
+
+/*60 days*/
+drop table mlmodel_data.DAT4_OM_BB_TV_AGG_60_202109;
+CREATE TABLE mlmodel_data.DAT4_OM_BB_TV_AGG_60_202109 AS
+SELECT   post_evar16
+
+/*General*/
+,SUM(CASE WHEN post_evar4 LIKE '%billing-and-payments%' or post_evar4 LIKE '%payment%' or post_evar4 LIKE '%bill%'           		THEN 1 ELSE 0  END)  AS BillPayments_60
+,SUM(CASE WHEN post_evar4 LIKE '%account%'             		THEN 1 ELSE 0  END)  AS account_60
+,SUM(CASE WHEN post_evar4 LIKE '%bill%'             		THEN 1 ELSE 0  END)  AS bill_60
+,SUM(CASE WHEN post_evar4 LIKE '%registration%'             		THEN 1 ELSE 0  END)  AS registration_60
+,SUM(CASE WHEN post_evar4 LIKE '%signin%'             		THEN 1 ELSE 0  END)  AS signin_60
+,SUM(CASE WHEN post_evar4 LIKE '%shop%'             		THEN 1 ELSE 0  END)  AS shop_60
+,SUM(CASE WHEN post_evar4 LIKE '%support%'             		THEN 1 ELSE 0  END)  AS support_60
+,SUM(CASE WHEN post_evar4 LIKE '%service%'             		THEN 1 ELSE 0  END)  AS service_60
+
+/*Risk*/
+/*,SUM(CASE WHEN post_evar4 in (&Risk_pages) 	THEN 1 ELSE 0  END)  AS risk_pgs_60
+*/,SUM(CASE WHEN post_evar4 LIKE '%cancel%' 	THEN 1 ELSE 0  END)  AS Cancel_60
+,SUM(CASE WHEN post_evar4 LIKE '%claim%' 	THEN 1 ELSE 0  END)  AS Claim_60
+
+
+/*TV*/
+,SUM(CASE WHEN post_evar4 LIKE '%R:home:cable tv%' 
+           OR  post_evar4 LIKE '%R:home:tv%'
+             OR  post_evar4 LIKE '%R:shop:cable tv%'
+             OR  post_evar4 LIKE '%R:shop:tv%'                      THEN 1 ELSE 0  END)  AS NUMV_TV_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:how to order%'                THEN 1 ELSE 0  END)  AS NUMV_HOW_TO_ORDER_TV_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:packages%'                    THEN 1 ELSE 0  END)  AS NUMV_TV_PKG_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:promotions%'                  THEN 1 ELSE 0  END)  AS NUMV_TV_PROMO_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:4k%'                          THEN 1 ELSE 0  END)  AS NUMV_4K_TV_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:anyplacetv%'                  THEN 1 ELSE 0  END)  AS NUMV_ANYPLACE_TV_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:compare%'                     THEN 1 ELSE 0  END)  AS NUMV_COMPARE_TV_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:hardware%'                    THEN 1 ELSE 0  END)  AS NUMV_TV_HARDWARE_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:packages and pricing%'        THEN 1 ELSE 0  END)  AS NUMV_TV_PKGE_PRCNG_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:promotions:free preview%'     THEN 1 ELSE 0  END)  AS NUMV_TV_FREE_PROMO_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:starter-package%'             THEN 1 ELSE 0  END)  AS NUMV_TV_START_PKGE_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:tmn%'                         THEN 1 ELSE 0  END)  AS NUMV_TV_TMN_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv-package%' or post_evar4 LIKE '%Change TV Package%'         		THEN 1 ELSE 0  END)  AS tv_package_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv'             		THEN 1 ELSE 0  END)  AS tv_60
+
+/*TMN, Sports and MultiCultural*/
+,SUM(CASE WHEN post_evar4 LIKE '%multicultural%'             THEN 1 ELSE 0  END)  AS NUMV_MULTIC_PG_60
+,SUM(CASE WHEN post_evar4 LIKE '%sports%'             		THEN 1 ELSE 0  END)  AS NUMV_Sports_PG_60
+,SUM(CASE WHEN post_evar4 LIKE '%TMN%' or post_evar4 LIKE '%tmn%'            THEN 1 ELSE 0  END)  AS NUMV_TMN_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%ignite%bundles%' 
+           OR  post_evar4 LIKE '%ignite%bundle%'
+             OR  post_evar4 LIKE '%ignite%TV%'
+             OR  post_evar4 LIKE '%ignite%tv%'    OR  post_evar4 LIKE '%ignite%Bundle%'                   THEN 1 ELSE 0  END)  AS NUMV_IGN_BUNDL_60
+
+
+/*INTERNET*/
+
+,SUM(CASE WHEN post_evar4 LIKE '%R:accueil:internet%' 
+            OR post_evar4 LIKE '%R:home:internet%'
+               OR post_evar4 LIKE '%R:internet:%'
+               OR post_evar4 LIKE '%R:shop:internet%'                THEN 1 ELSE 0  END)  AS NUMV_BB_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:forfaits et tarifs%'
+            OR post_evar4 LIKE '%internet:packages & pricing%'    THEN 1 ELSE 0  END)  AS NUMV_PKG_PRCNG_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:modems et routeurs%'
+            OR post_evar4 LIKE '%internet:modems & routers%'      THEN 1 ELSE 0  END)  AS NUMV_BB_MODM_RTRS_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:promotions%'            THEN 1 ELSE 0  END)  AS NUMV_BB_PROMO_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:gaming%'                THEN 1 ELSE 0  END)  AS NUMV_BB_GMNG_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet services:high speed%'   THEN 1 ELSE 0  END)  AS NUMV_BB_HGH_SPD_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:story%'                 THEN 1 ELSE 0  END)  AS NUMV_BB_STRY_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles%'                        THEN 1 ELSE 0  END)  AS NUMV_BNDL_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles:tv-internet%'            THEN 1 ELSE 0  END)  AS NUMV_BNDL_TV_BB_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles:packages & pricing%'     THEN 1 ELSE 0  END)  AS NUMV_BNDL_PKG_PRCNG_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles:promotions%'             THEN 1 ELSE 0  END)  AS NUMV_BNDL_PROMO_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet'             		THEN 1 ELSE 0  END)  AS internet_60
+
+/*SHM*/
+,SUM(CASE WHEN post_evar4 LIKE '%home monitoring google%'             THEN 1 ELSE 0  END)  AS NUMV_SHM_google_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%smart-home-monitoring%'             THEN 1 ELSE 0  END)  AS NUMV_SHM_PG_60
+
+,SUM(CASE WHEN post_evar4 LIKE '%home monitoring%'             THEN 1 ELSE 0  END)  AS NUMV_HM_PG_60
+
+FROM omniture.RCP_R_PROD
+WHERE DATE_PART > TO_DATE('2021-08-01')
+AND  DATE_PART <= TO_DATE('2021-09-30')
+GROUP BY post_evar16;
+
+drop table mlmodel_data.DAT5_OM_BB_TV_AGG_60_202109;
+CREATE TABLE mlmodel_data.DAT5_OM_BB_TV_AGG_60_202109 AS
+SELECT  
+A.*,
+B.account,
+B.ecid
+FROM mlmodel_data.DAT4_OM_BB_TV_AGG_60_202109 A INNER JOIN hash_lookup.ECID_BAN_CAN B
+ON A.post_evar16 = B.hash_account;
+
+/***************************************************************************************************/
+/*90 days*/
+drop table mlmodel_data.DAT6_OM_BB_TV_AGG_90_202109;
+CREATE TABLE mlmodel_data.DAT6_OM_BB_TV_AGG_90_202109 AS
+SELECT   post_evar16
+
+/*General*/
+,SUM(CASE WHEN post_evar4 LIKE '%billing-and-payments%' or post_evar4 LIKE '%payment%' or post_evar4 LIKE '%bill%'           		THEN 1 ELSE 0  END)  AS BillPayments_90
+,SUM(CASE WHEN post_evar4 LIKE '%account%'             		THEN 1 ELSE 0  END)  AS account_90
+,SUM(CASE WHEN post_evar4 LIKE '%bill%'             		THEN 1 ELSE 0  END)  AS bill_90
+,SUM(CASE WHEN post_evar4 LIKE '%registration%'             		THEN 1 ELSE 0  END)  AS registration_90
+,SUM(CASE WHEN post_evar4 LIKE '%signin%'             		THEN 1 ELSE 0  END)  AS signin_90
+,SUM(CASE WHEN post_evar4 LIKE '%shop%'             		THEN 1 ELSE 0  END)  AS shop_90
+,SUM(CASE WHEN post_evar4 LIKE '%support%'             		THEN 1 ELSE 0  END)  AS support_90
+,SUM(CASE WHEN post_evar4 LIKE '%service%'             		THEN 1 ELSE 0  END)  AS service_90
+
+/*Risk*/
+/*,SUM(CASE WHEN post_evar4 in (&Risk_pages) 	THEN 1 ELSE 0  END)  AS risk_pgs_90
+*/,SUM(CASE WHEN post_evar4 LIKE '%cancel%' 	THEN 1 ELSE 0  END)  AS Cancel_90
+,SUM(CASE WHEN post_evar4 LIKE '%claim%' 	THEN 1 ELSE 0  END)  AS Claim_90
+
+/*TV*/
+,SUM(CASE WHEN post_evar4 LIKE '%R:home:cable tv%' 
+           OR  post_evar4 LIKE '%R:home:tv%'
+             OR  post_evar4 LIKE '%R:shop:cable tv%'
+             OR  post_evar4 LIKE '%R:shop:tv%'                      THEN 1 ELSE 0  END)  AS NUMV_TV_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:how to order%'                THEN 1 ELSE 0  END)  AS NUMV_HOW_TO_ORDER_TV_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:packages%'                    THEN 1 ELSE 0  END)  AS NUMV_TV_PKG_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:promotions%'                  THEN 1 ELSE 0  END)  AS NUMV_TV_PROMO_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:4k%'                          THEN 1 ELSE 0  END)  AS NUMV_4K_TV_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:anyplacetv%'                  THEN 1 ELSE 0  END)  AS NUMV_ANYPLACE_TV_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:compare%'                     THEN 1 ELSE 0  END)  AS NUMV_COMPARE_TV_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:hardware%'                    THEN 1 ELSE 0  END)  AS NUMV_TV_HARDWARE_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:packages and pricing%'        THEN 1 ELSE 0  END)  AS NUMV_TV_PKGE_PRCNG_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:promotions:free preview%'     THEN 1 ELSE 0  END)  AS NUMV_TV_FREE_PROMO_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:starter-package%'             THEN 1 ELSE 0  END)  AS NUMV_TV_START_PKGE_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv:tmn%'                         THEN 1 ELSE 0  END)  AS NUMV_TV_TMN_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv-package%' or post_evar4 LIKE '%Change TV Package%'         		THEN 1 ELSE 0  END)  AS tv_package_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%tv'             		THEN 1 ELSE 0  END)  AS tv_90
+
+/*TMN, Sports and MultiCultural*/
+,SUM(CASE WHEN post_evar4 LIKE '%multicultural%'             THEN 1 ELSE 0  END)  AS NUMV_MULTIC_PG_90
+,SUM(CASE WHEN post_evar4 LIKE '%sports%'             		THEN 1 ELSE 0  END)  AS NUMV_Sports_PG_90
+,SUM(CASE WHEN post_evar4 LIKE '%TMN%' or post_evar4 LIKE '%tmn%'            THEN 1 ELSE 0  END)  AS NUMV_TMN_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%ignite%bundles%' 
+           OR  post_evar4 LIKE '%ignite%bundle%'
+             OR  post_evar4 LIKE '%ignite%TV%'
+             OR  post_evar4 LIKE '%ignite%tv%'    OR  post_evar4 LIKE '%ignite%Bundle%'                   THEN 1 ELSE 0  END)  AS NUMV_IGN_BUNDL_90
+
+
+/*INTERNET*/
+
+,SUM(CASE WHEN post_evar4 LIKE '%R:accueil:internet%' 
+            OR post_evar4 LIKE '%R:home:internet%'
+               OR post_evar4 LIKE '%R:internet:%'
+               OR post_evar4 LIKE '%R:shop:internet%'                THEN 1 ELSE 0  END)  AS NUMV_BB_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:forfaits et tarifs%'
+            OR post_evar4 LIKE '%internet:packages & pricing%'    THEN 1 ELSE 0  END)  AS NUMV_PKG_PRCNG_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:modems et routeurs%'
+            OR post_evar4 LIKE '%internet:modems & routers%'      THEN 1 ELSE 0  END)  AS NUMV_BB_MODM_RTRS_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:promotions%'            THEN 1 ELSE 0  END)  AS NUMV_BB_PROMO_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:gaming%'                THEN 1 ELSE 0  END)  AS NUMV_BB_GMNG_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet services:high speed%'   THEN 1 ELSE 0  END)  AS NUMV_BB_HGH_SPD_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet:story%'                 THEN 1 ELSE 0  END)  AS NUMV_BB_STRY_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles%'                        THEN 1 ELSE 0  END)  AS NUMV_BNDL_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles:tv-internet%'            THEN 1 ELSE 0  END)  AS NUMV_BNDL_TV_BB_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles:packages & pricing%'     THEN 1 ELSE 0  END)  AS NUMV_BNDL_PKG_PRCNG_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%bundles:promotions%'             THEN 1 ELSE 0  END)  AS NUMV_BNDL_PROMO_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%internet'             		THEN 1 ELSE 0  END)  AS internet_90
+
+/*SHM*/
+,SUM(CASE WHEN post_evar4 LIKE '%home monitoring google%'             THEN 1 ELSE 0  END)  AS NUMV_SHM_google_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%smart-home-monitoring%'             THEN 1 ELSE 0  END)  AS NUMV_SHM_PG_90
+
+,SUM(CASE WHEN post_evar4 LIKE '%home monitoring%'             THEN 1 ELSE 0  END)  AS NUMV_HM_PG_90
+FROM omniture.RCP_R_PROD
+WHERE DATE_PART > TO_DATE('2021-07-01')
+AND  DATE_PART <= TO_DATE('2021-09-30')
+GROUP BY post_evar16;
+
+drop table mlmodel_data.DAT7_OM_BB_TV_AGG_90_202109;
+CREATE TABLE mlmodel_data.DAT7_OM_BB_TV_AGG_90_202109 AS
+SELECT  
+A.*,
+B.account,
+B.ecid
+FROM mlmodel_data.DAT6_OM_BB_TV_AGG_90_202109 A INNER JOIN hash_lookup.ECID_BAN_CAN B
+ON A.post_evar16 = B.hash_account;
+
+CREATE TABLE mlmodel_data.DAT8_OM_BB_TV_AGG_90_202109 AS
+SELECT   
+A.account,
+A.ecid,
+A.BillPayments_90,
+A.account_90,
+A.bill_90,
+A.registration_90,
+A.signin_90,
+A.shop_90,
+A.support_90,
+A.service_90,
+
+/*A.risk_pgs_90,*/
+A.Cancel_90,
+A.Claim_90,
+
+A.tv_90,
+A.tv_package_90,
+A.NUMV_IGN_BUNDL_90,
+A.internet_90,
+A.numv_tv_pg_90,
+A.numv_how_to_order_tv_pg_90,
+A.numv_tv_pkg_pg_90,
+A.numv_tv_promo_pg_90,
+A.numv_4k_tv_pg_90,
+A.numv_anyplace_tv_pg_90,
+A.numv_compare_tv_pg_90,
+A.numv_tv_hardware_pg_90,
+A.numv_tv_pkge_prcng_pg_90,
+A.numv_tv_free_promo_pg_90,
+A.numv_tv_start_pkge_pg_90,
+A.numv_tv_tmn_pg_90,
+A.numv_bb_pg_90,
+A.numv_pkg_prcng_pg_90,
+A.numv_bb_modm_rtrs_pg_90,
+A.numv_bb_promo_pg_90,
+A.numv_bb_gmng_pg_90,
+A.numv_bb_hgh_spd_pg_90,
+A.numv_bb_stry_pg_90,
+A.numv_bndl_pg_90,
+A.numv_bndl_tv_bb_pg_90,
+A.numv_bndl_pkg_prcng_pg_90,
+A.numv_bndl_promo_pg_90,
+A.NUMV_SHM_google_PG_90,
+A.NUMV_SHM_PG_90,
+A.NUMV_HM_PG_90,
+A.NUMV_MULTIC_PG_90,
+A.NUMV_Sports_PG_90,
+A.NUMV_TMN_PG_90,
+
+B.BillPayments_60,
+B.account_60,
+B.bill_60,
+B.registration_60,
+B.signin_60,
+B.shop_60,
+B.support_60,
+B.service_60,
+
+/*B.risk_pgs_60,*/
+B.Cancel_60,
+B.Claim_60,
+
+B.tv_60,
+B.tv_package_60,
+B.internet_60,
+B.numv_tv_pg_60,
+B.NUMV_IGN_BUNDL_60,
+B.numv_how_to_order_tv_pg_60,
+B.numv_tv_pkg_pg_60,
+B.numv_tv_promo_pg_60,
+B.numv_4k_tv_pg_60,
+B.numv_anyplace_tv_pg_60,
+B.numv_compare_tv_pg_60,
+B.numv_tv_hardware_pg_60,
+B.numv_tv_pkge_prcng_pg_60,
+B.numv_tv_free_promo_pg_60,
+B.numv_tv_start_pkge_pg_60,
+B.numv_tv_tmn_pg_60,
+B.numv_bb_pg_60,
+B.numv_pkg_prcng_pg_60,
+B.numv_bb_modm_rtrs_pg_60,
+B.numv_bb_promo_pg_60,
+B.numv_bb_gmng_pg_60,
+B.numv_bb_hgh_spd_pg_60,
+B.numv_bb_stry_pg_60,
+B.numv_bndl_pg_60,
+B.numv_bndl_tv_bb_pg_60,
+B.numv_bndl_pkg_prcng_pg_60,
+B.numv_bndl_promo_pg_60,
+B.NUMV_SHM_google_PG_60,
+B.NUMV_SHM_PG_60,
+B.NUMV_HM_PG_60,
+B.NUMV_MULTIC_PG_60,
+B.NUMV_Sports_PG_60,
+B.NUMV_TMN_PG_60,
+
+C.BillPayments_30,
+C.account_30,
+C.bill_30,
+C.registration_30,
+C.signin_30,
+C.shop_30,
+C.support_30,
+C.service_30,
+
+/*C.risk_pgs_30,*/
+C.Cancel_30,
+C.Claim_30,
+
+C.tv_30,
+C.tv_package_30,
+C.NUMV_IGN_BUNDL_30,
+C.internet_30,
+C.numv_tv_pg_30,
+C.numv_how_to_order_tv_pg_30,
+C.numv_tv_pkg_pg_30,
+C.numv_tv_promo_pg_30,
+C.numv_4k_tv_pg_30,
+C.numv_anyplace_tv_pg_30,
+C.numv_compare_tv_pg_30,
+C.numv_tv_hardware_pg_30,
+C.numv_tv_pkge_prcng_pg_30,
+C.numv_tv_free_promo_pg_30,
+C.numv_tv_start_pkge_pg_30,
+C.numv_tv_tmn_pg_30,
+C.numv_bb_pg_30,
+C.numv_pkg_prcng_pg_30,
+C.numv_bb_modm_rtrs_pg_30,
+C.numv_bb_promo_pg_30,
+C.numv_bb_gmng_pg_30,
+C.numv_bb_hgh_spd_pg_30,
+C.numv_bb_stry_pg_30,
+C.numv_bndl_pg_30,
+C.numv_bndl_tv_bb_pg_30,
+C.numv_bndl_pkg_prcng_pg_30,
+C.numv_bndl_promo_pg_30,
+C.NUMV_SHM_google_PG_30,
+C.NUMV_SHM_PG_30,
+C.NUMV_HM_PG_30,
+C.NUMV_MULTIC_PG_30,
+C.NUMV_Sports_PG_30,
+C.NUMV_TMN_PG_30
+FROM     mlmodel_data.DAT7_OM_BB_TV_AGG_90_202109 A 
+FULL JOIN mlmodel_data.DAT5_OM_BB_TV_AGG_60_202109 B  ON A.account = B.account 
+FULL JOIN mlmodel_data.DAT3_OM_BB_TV_AGG_30_202109 C  ON A.account = C.account;
+
+create table  mlmodel_data.DAT9_OM_BB_TV_AGG_90_202109 as
+select ecid, 
+sum(BillPayments_90 ) as BillPayments_90 ,
+sum(account_90) as account_90,
+sum(bill_90) as bill_90,
+sum(registration_90) as registration_90,
+sum(signin_90) as signin_90,
+sum(shop_90) as shop_90,
+sum(support_90) as support_90,
+sum(service_90) as service_90,
+
+/*sum(risk_pgs_90) as risk_pgs_90,*/
+sum(Cancel_90) as cancel_90,
+sum(Claim_90) as claim_90,
+
+sum(tv_90) as tv_90,
+sum(tv_package_90) as tv_package_90,
+sum(NUMV_IGN_BUNDL_90) as NUMV_IGN_BUNDL_90,
+sum(internet_90) as internet_90,
+sum(numv_tv_pg_90) as numv_tv_pg_90,
+sum(numv_how_to_order_tv_pg_90) as numv_how_to_order_tv_pg_90,
+sum(numv_tv_pkg_pg_90) as numv_tv_pkg_pg_90,
+sum(numv_tv_promo_pg_90) as numv_tv_promo_pg_90,
+sum(numv_4k_tv_pg_90) as numv_4k_tv_pg_90,
+sum(numv_anyplace_tv_pg_90) as numv_anyplace_tv_pg_90,
+sum(numv_compare_tv_pg_90) as numv_compare_tv_pg_90,
+sum(numv_tv_hardware_pg_90) as numv_tv_hardware_pg_90,
+sum(numv_tv_pkge_prcng_pg_90) as numv_tv_pkge_prcng_pg_90,
+sum(numv_tv_free_promo_pg_90) as numv_tv_free_promo_pg_90,
+sum(numv_tv_start_pkge_pg_90) as numv_tv_start_pkge_pg_90,
+sum(numv_tv_tmn_pg_90) as numv_tv_tmn_pg_90,
+sum(numv_bb_pg_90) as numv_bb_pg_90,
+sum(numv_pkg_prcng_pg_90) as numv_pkg_prcng_pg_90,
+sum(numv_bb_modm_rtrs_pg_90) as numv_bb_modm_rtrs_pg_90,
+sum(numv_bb_promo_pg_90) as numv_bb_promo_pg_90,
+sum(numv_bb_gmng_pg_90) as numv_bb_gmng_pg_90,
+sum(numv_bb_hgh_spd_pg_90) as numv_bb_hgh_spd_pg_90,
+sum(numv_bb_stry_pg_90) as numv_bb_stry_pg_90,
+sum(numv_bndl_pg_90) as numv_bndl_pg_90,
+sum(numv_bndl_tv_bb_pg_90) as numv_bndl_tv_bb_pg_90,
+sum(numv_bndl_pkg_prcng_pg_90) as numv_bndl_pkg_prcng_pg_90,
+sum(numv_bndl_promo_pg_90) as numv_bndl_promo_pg_90,
+sum(NUMV_SHM_google_PG_90) as NUMV_SHM_google_PG_90,
+sum(NUMV_SHM_PG_90) as NUMV_SHM_PG_90,
+sum(NUMV_HM_PG_90) as NUMV_HM_PG_90,
+sum(NUMV_MULTIC_PG_90) as NUMV_MULTIC_PG_90,
+sum(NUMV_Sports_PG_90) as NUMV_Sports_PG_90,
+sum(NUMV_TMN_PG_90) as NUMV_TMN_PG_90,
+
+sum(BillPayments_60) as BillPayments_60,
+sum(account_60) as account_60,
+sum(bill_60) as bill_60,
+sum(registration_60) as registration_60,
+sum(signin_60) as signin_60,
+sum(shop_60) as shop_60,
+sum(support_60) as support_60,
+
+sum(service_60) as service_60,
+
+/*sum(risk_pgs_60) as risk_pgs_60,*/
+sum(Cancel_60) as cancel_60,
+sum(Claim_60) as claim_60,
+
+sum(tv_60) as tv_60,
+sum(tv_package_60) as tv_package_60,
+sum(NUMV_IGN_BUNDL_60) as NUMV_IGN_BUNDL_60,
+sum(internet_60) as internet_60,
+sum(numv_tv_pg_60) as numv_tv_pg_60,
+sum(numv_how_to_order_tv_pg_60) as numv_how_to_order_tv_pg_60,
+sum(numv_tv_pkg_pg_60) as numv_tv_pkg_pg_60,
+sum(numv_tv_promo_pg_60) as numv_tv_promo_pg_60,
+sum(numv_4k_tv_pg_60) as numv_4k_tv_pg_60,
+sum(numv_anyplace_tv_pg_60) as numv_anyplace_tv_pg_60,
+sum(numv_compare_tv_pg_60) as numv_compare_tv_pg_60,
+sum(numv_tv_hardware_pg_60) as numv_tv_hardware_pg_60,
+sum(numv_tv_pkge_prcng_pg_60) as numv_tv_pkge_prcng_pg_60,
+sum(numv_tv_free_promo_pg_60) as numv_tv_free_promo_pg_60,
+sum(numv_tv_start_pkge_pg_60) as numv_tv_start_pkge_pg_60,
+sum(numv_tv_tmn_pg_60) as numv_tv_tmn_pg_60,
+sum(numv_bb_pg_60) as numv_bb_pg_60,
+sum(numv_pkg_prcng_pg_60) as numv_pkg_prcng_pg_60,
+sum(numv_bb_modm_rtrs_pg_60) as numv_bb_modm_rtrs_pg_60,
+sum(numv_bb_promo_pg_60) as numv_bb_promo_pg_60,
+sum(numv_bb_gmng_pg_60) as numv_bb_gmng_pg_60,
+sum(numv_bb_hgh_spd_pg_60) as numv_bb_hgh_spd_pg_60,
+sum(numv_bb_stry_pg_60) as numv_bb_stry_pg_60,
+sum(numv_bndl_pg_60) as numv_bndl_pg_60,
+sum(numv_bndl_tv_bb_pg_60) as numv_bndl_tv_bb_pg_60,
+sum(numv_bndl_pkg_prcng_pg_60) as numv_bndl_pkg_prcng_pg_60,
+sum(numv_bndl_promo_pg_60) as numv_bndl_promo_pg_60,
+sum(NUMV_SHM_google_PG_60) as NUMV_SHM_google_PG_60,
+sum(NUMV_SHM_PG_60) as NUMV_SHM_PG_60,
+sum(NUMV_HM_PG_60) as NUMV_HM_PG_60,
+sum(NUMV_MULTIC_PG_60) as NUMV_MULTIC_PG_60,
+sum(NUMV_Sports_PG_60) as NUMV_Sports_PG_60,
+sum(NUMV_TMN_PG_60) as NUMV_TMN_PG_60,
+
+sum(BillPayments_30) as BillPayments_30,
+sum(account_30) as account_30,
+sum(bill_30) as bill_30,
+sum(registration_30) as registration_30,
+sum(signin_30) as signin_30,
+sum(shop_30) as shop_30,
+sum(support_30) as support_30,
+
+sum(service_30) as service_30,
+
+/*sum(risk_pgs_30) as risk_pgs_30,*/
+sum(Cancel_30) as cancel_30,
+sum(Claim_30) as claim_30,
+sum(tv_30) as tv_30,
+sum(tv_package_30) as tv_package_30,
+sum(NUMV_IGN_BUNDL_30) as NUMV_IGN_BUNDL_30,
+sum(internet_30) as internet_30,
+sum(numv_tv_pg_30) as numv_tv_pg_30,
+sum(numv_how_to_order_tv_pg_30) as numv_how_to_order_tv_pg_30,
+sum(numv_tv_pkg_pg_30) as numv_tv_pkg_pg_30,
+sum(numv_tv_promo_pg_30) as numv_tv_promo_pg_30,
+sum(numv_4k_tv_pg_30) as numv_4k_tv_pg_30,
+sum(numv_anyplace_tv_pg_30) as numv_anyplace_tv_pg_30,
+sum(numv_compare_tv_pg_30) as numv_compare_tv_pg_30,
+sum(numv_tv_hardware_pg_30) as numv_tv_hardware_pg_30,
+sum(numv_tv_pkge_prcng_pg_30) as numv_tv_pkge_prcng_pg_30,
+sum(numv_tv_free_promo_pg_30) as numv_tv_free_promo_pg_30,
+sum(numv_tv_start_pkge_pg_30) as numv_tv_start_pkge_pg_30,
+sum(numv_tv_tmn_pg_30) as numv_tv_tmn_pg_30,
+sum(numv_bb_pg_30) as numv_bb_pg_30,
+sum(numv_pkg_prcng_pg_30) as numv_pkg_prcng_pg_30,
+sum(numv_bb_modm_rtrs_pg_30) as numv_bb_modm_rtrs_pg_30,
+sum(numv_bb_promo_pg_30) as numv_bb_promo_pg_30,
+sum(numv_bb_gmng_pg_30) as numv_bb_gmng_pg_30,
+sum(numv_bb_hgh_spd_pg_30) as numv_bb_hgh_spd_pg_30,
+sum(numv_bb_stry_pg_30) as numv_bb_stry_pg_30,
+sum(numv_bndl_pg_30) as numv_bndl_pg_30,
+sum(numv_bndl_tv_bb_pg_30) as numv_bndl_tv_bb_pg_30,
+sum(numv_bndl_pkg_prcng_pg_30) as numv_bndl_pkg_prcng_pg_30,
+sum(numv_bndl_promo_pg_30) as numv_bndl_promo_pg_30,
+sum(NUMV_SHM_google_PG_30) as NUMV_SHM_google_PG_30,
+sum(NUMV_SHM_PG_30) as NUMV_SHM_PG_30,
+sum(NUMV_HM_PG_30) as NUMV_HM_PG_30,
+sum(NUMV_MULTIC_PG_30) as NUMV_MULTIC_PG_30,
+sum(NUMV_Sports_PG_30) as NUMV_Sports_PG_30,
+sum(NUMV_TMN_PG_30) as NUMV_TMN_PG_30
+from mlmodel_data.DAT8_OM_BB_TV_AGG_90_202109
+group by 1;
+
+/******************************************************************************************/
+/*Network*/ 
+create table mlmodel_data.CG_DAT0_NW_base_202109 as
+select distinct
+full_acct_num,
+account,
+tier
+FROM  hem.modem_attainability_daily
+where event_date =  '2021-09-30';
+
+/****************************************************************************/
+/*7 days*/
+create table mlmodel_data.CG_DAT1_NW_Agg_7d_202109 as
+select 
+full_acct_num,
+avg(download_speed_mbps) as download_speed_mbps_7d,
+avg(upload_speed_mbps) as upload_speed_mbps_7d,
+sum(up_mbytes) as up_mbytes_7d,
+sum(down_mbytes) as down_mbytes_7d,
+sum(total_usg_mbytes) as total_usg_mbytes_7d,
+avg(us_speed_attainable_full) as us_speed_attainable_full_7d,
+avg(us_speed_attainable_all) as us_speed_attainable_prime_7d,
+sum(actual_impact_counter) as actual_impact_counter_7d
+FROM  hem.modem_attainability_daily
+where event_date <=  '2021-09-30'
+AND  event_date >=  '2021-09-24' 
+group by full_acct_num;
+
+/****************************************************************************/
+/*30 days*/
+create table mlmodel_data.CG_DAT2_NW_Agg_30d_202109 as
+select 
+full_acct_num,
+avg(download_speed_mbps) as download_speed_mbps_30d,
+avg(upload_speed_mbps) as upload_speed_mbps_30d,
+sum(up_mbytes) as up_mbytes_30d,
+sum(down_mbytes) as down_mbytes_30d,
+sum(total_usg_mbytes) as total_usg_mbytes_30d,
+avg(us_speed_attainable_full) as us_speed_attainable_full_30d,
+avg(us_speed_attainable_all) as us_speed_attainable_prime_30d,
+sum(actual_impact_counter) as actual_impact_counter_30d
+FROM  hem.modem_attainability_daily
+where event_date <=  '2021-09-30'
+AND  event_date >=  '2021-09-01' 
+group by full_acct_num;
+
+/****************************************************************************/
+/*60 days*/
+create table mlmodel_data.CG_DAT3_NW_Agg_60d_202109 as
+select 
+full_acct_num,
+avg(download_speed_mbps) as download_speed_mbps_60d,
+avg(upload_speed_mbps) as upload_speed_mbps_60d,
+sum(up_mbytes) as up_mbytes_60d,
+sum(down_mbytes) as down_mbytes_60d,
+sum(total_usg_mbytes) as total_usg_mbytes_60d,
+avg(us_speed_attainable_full) as us_speed_attainable_full_60d,
+avg(us_speed_attainable_all) as us_speed_attainable_prime_60d,
+sum(actual_impact_counter) as actual_impact_counter_60d
+FROM  hem.modem_attainability_daily
+where event_date <=  '2021-09-30'
+AND  event_date >=  '2021-08-01' 
+group by full_acct_num;
+
+/****************************************************************************/
+/*90 days*/
+create table mlmodel_data.CG_DAT4_NW_Agg_90d_202109 as
+select 
+full_acct_num,
+avg(download_speed_mbps) as download_speed_mbps_90d,
+avg(upload_speed_mbps) as upload_speed_mbps_90d,
+sum(up_mbytes) as up_mbytes_90d,
+sum(down_mbytes) as down_mbytes_90d,
+sum(total_usg_mbytes) as total_usg_mbytes_90d,
+avg(us_speed_attainable_full) as us_speed_attainable_full_90d,
+avg(us_speed_attainable_all) as us_speed_attainable_prime_90d,
+sum(actual_impact_counter) as actual_impact_counter_90d
+FROM  hem.modem_attainability_daily
+where event_date <=  '2021-09-30'
+AND  event_date >=  '2021-07-01' 
+group by full_acct_num;
+
+/*************************************************************************/
+/*Combine*/
+/*create table mlmodel_data.CG_DAT5_NW_Agg_90d_202109 as
+select distinct 
+a.full_acct_num, 
+a.account,
+a.tier,
+b.download_speed_mbps_7d,
+b.upload_speed_mbps_7d,
+b.up_mbytes_7d,
+b.down_mbytes_7d,
+b.total_usg_mbytes_7d,
+b.us_speed_attainable_full_7d,
+b.us_speed_attainable_prime_7d,
+b.actual_impact_counter_7d,
+
+c.download_speed_mbps_30d,
+c.upload_speed_mbps_30d,
+c.up_mbytes_30d,
+c.down_mbytes_30d,
+c.total_usg_mbytes_30d,
+c.us_speed_attainable_full_30d,
+c.us_speed_attainable_prime_30d,
+c.actual_impact_counter_30d,
+
+d.download_speed_mbps_60d,
+d.upload_speed_mbps_60d,
+d.up_mbytes_60d,
+d.down_mbytes_60d,
+d.total_usg_mbytes_60d,
+d.us_speed_attainable_full_60d,
+d.us_speed_attainable_prime_60d,
+d.actual_impact_counter_60d,
+
+e.download_speed_mbps_90d,
+e.upload_speed_mbps_90d,
+e.up_mbytes_90d,
+e.down_mbytes_90d,
+e.total_usg_mbytes_90d,
+e.us_speed_attainable_full_90d,
+e.us_speed_attainable_prime_90d,
+e.actual_impact_counter_90d,
+
+b.download_speed_mbps_7d/c.download_speed_mbps_30d as r_down_sd_mbps_7d_30d,
+b.upload_speed_mbps_7d/c.upload_speed_mbps_30d as r_up_sd_mbps_7d_30d,
+b.up_mbytes_7d/c.up_mbytes_30d as r_up_mbytes_7d_30d,
+b.down_mbytes_7d/c.down_mbytes_30d as r_down_mbytes_7d_30d,
+b.total_usg_mbytes_7d/c.total_usg_mbytes_30d as r_total_usg_mbytes_7d_30d,
+b.us_speed_attainable_full_7d/c.us_speed_attainable_full_30d as r_us_speed_attain_full_7d_30d,
+b.us_speed_attainable_prime_7d/c.us_speed_attainable_prime_30d as r_us_speed_attain_prime_7d_30d,
+b.actual_impact_counter_7d/c.actual_impact_counter_30d as r_act_impact_count_7d_30d,
+
+b.download_speed_mbps_7d/d.download_speed_mbps_60d as r_down_sd_mbps_7d_60d,
+b.upload_speed_mbps_7d/d.upload_speed_mbps_60d as r_up_sd_mbps_7d_60d,
+b.up_mbytes_7d/d.up_mbytes_60d as r_up_mbytes_7d_60d,
+b.down_mbytes_7d/d.down_mbytes_60d as r_down_mbytes_7d_60d,
+b.total_usg_mbytes_7d/d.total_usg_mbytes_60d as r_total_usg_mbytes_7d_60d,
+b.us_speed_attainable_full_7d/d.us_speed_attainable_full_60d as r_us_speed_attain_full_7d_60d,
+b.us_speed_attainable_prime_7d/d.us_speed_attainable_prime_60d as r_us_speed_attain_prime_7d_60d,
+b.actual_impact_counter_7d/d.actual_impact_counter_60d as r_act_impact_count_7d_60d,
+
+b.download_speed_mbps_7d/e.download_speed_mbps_90d as r_down_sd_mbps_7d_90d,
+b.upload_speed_mbps_7d/e.upload_speed_mbps_90d as r_up_sd_mbps_7d_90d,
+b.up_mbytes_7d/e.up_mbytes_90d as r_up_mbytes_7d_90d,
+b.down_mbytes_7d/e.down_mbytes_90d as r_down_mbytes_7d_90d,
+b.total_usg_mbytes_7d/e.total_usg_mbytes_90d as r_total_usg_mbytes_7d_90d,
+b.us_speed_attainable_full_7d/e.us_speed_attainable_full_90d as r_us_speed_attain_full_7d_90d,
+b.us_speed_attainable_prime_7d/e.us_speed_attainable_prime_90d as r_us_speed_attain_prime_7d_90d,
+b.actual_impact_counter_7d/e.actual_impact_counter_90d as r_act_impact_count_7d_90d
+FROM  mlmodel_data.CG_DAT0_NW_base_202109 a 
+left join  mlmodel_data.CG_DAT1_NW_Agg_7d_202109 b
+on a.full_acct_num=b.full_acct_num
+left join  mlmodel_data.CG_DAT2_NW_Agg_30d_202109 c
+on a.full_acct_num=c.full_acct_num
+left join  mlmodel_data.CG_DAT3_NW_Agg_60d_202109 d
+on a.full_acct_num=d.full_acct_num
+left join  mlmodel_data.CG_DAT4_NW_Agg_90d_202109 e
+on a.full_acct_num=e.full_acct_num; 
+
+/*****************************************************************/
+/*Modem accessibility*/
+create table mlmodel_data.CG_DAT0_NW_base_access_202109 as
+select distinct
+full_account_number,
+account,
+phub,
+shub,
+model
+FROM  hem.modem_accessibility_daily
+where event_date =  '2021-09-30'
+and full_account_number is not NULL;
+
+create table mlmodel_data.CG_DAT1_NW_acc_Agg_7d_202109 as
+select 
+full_account_number,
+sum(outage_count) as outage_count_7d,
+sum(up_status_count) as up_status_count_7d,
+sum(down_status_count) as down_status_count_7d,
+sum(downtime_all_day) as downtime_all_day_7d,
+avg(accessibility_perc_all_day) as accessibility_perc_all_day_7d,
+sum(downtime_prime) as downtime_prime_7d,
+avg(accessibility_perc_prime) as accessibility_perc_prime_7d,
+sum(downtime_full_day) as downtime_full_day_7d,
+avg(accessibility_perc_full_day) as accessibility_perc_full_day_7d
+FROM  hem.modem_accessibility_daily
+where event_date <=  '2021-09-30'
+AND  event_date >=  '2021-09-24' 
+group by full_account_number;
+
+/*30 days*/
+create table mlmodel_data.CG_DAT2_NW_acc_Agg_30d_202109 as
+select 
+full_account_number,
+sum(outage_count) as outage_count_30d,
+sum(up_status_count) as up_status_count_30d,
+sum(down_status_count) as down_status_count_30d,
+sum(downtime_all_day) as downtime_all_day_30d,
+avg(accessibility_perc_all_day) as accessibility_perc_all_day_30d,
+sum(downtime_prime) as downtime_prime_30d,
+avg(accessibility_perc_prime) as accessibility_perc_prime_30d,
+sum(downtime_full_day) as downtime_full_day_30d,
+avg(accessibility_perc_full_day) as accessibility_perc_full_day_30d
+FROM  hem.modem_accessibility_daily
+where event_date <=  '2021-09-30'
+AND  event_date >=  '2021-09-01' 
+group by full_account_number;
+
+/*60 days*/
+create table mlmodel_data.CG_DAT3_NW_acc_Agg_60d_202109 as
+select 
+full_account_number,
+sum(outage_count) as outage_count_60d,
+sum(up_status_count) as up_status_count_60d,
+sum(down_status_count) as down_status_count_60d,
+sum(downtime_all_day) as downtime_all_day_60d,
+avg(accessibility_perc_all_day) as accessibility_perc_all_day_60d,
+sum(downtime_prime) as downtime_prime_60d,
+avg(accessibility_perc_prime) as accessibility_perc_prime_60d,
+sum(downtime_full_day) as downtime_full_day_60d,
+avg(accessibility_perc_full_day) as accessibility_perc_full_day_60d
+FROM  hem.modem_accessibility_daily
+where event_date <=  '2021-09-30'
+AND  event_date >=  '2021-08-01' 
+group by full_account_number;
+
+/*90 days*/
+create table mlmodel_data.CG_DAT4_NW_acc_Agg_90d_202109 as
+select 
+full_account_number,
+sum(outage_count) as outage_count_90d,
+sum(up_status_count) as up_status_count_90d,
+sum(down_status_count) as down_status_count_90d,
+sum(downtime_all_day) as downtime_all_day_90d,
+avg(accessibility_perc_all_day) as accessibility_perc_all_day_90d,
+sum(downtime_prime) as downtime_prime_90d,
+avg(accessibility_perc_prime) as accessibility_perc_prime_90d,
+sum(downtime_full_day) as downtime_full_day_90d,
+avg(accessibility_perc_full_day) as accessibility_perc_full_day_90d
+FROM  hem.modem_accessibility_daily
+where event_date <=  '2021-09-30'
+AND  event_date >=  '2021-07-01'
+group by full_account_number;
+
+/*****************************************************************************/
+/*Combine*/
+create table mlmodel_data.CG_DAT5_NW_acc_202109 as
+select distinct 
+a.full_account_number,
+a.account,
+a.phub,
+a.shub,
+a.model,
+b.outage_count_7d,
+b.up_status_count_7d,
+b.down_status_count_7d,
+b.downtime_all_day_7d,
+b.accessibility_perc_all_day_7d,
+b.downtime_prime_7d,
+b.accessibility_perc_prime_7d,
+b.downtime_full_day_7d,
+b.accessibility_perc_full_day_7d,
+
+c.outage_count_30d,
+c.up_status_count_30d,
+c.down_status_count_30d,
+c.downtime_all_day_30d,
+c.accessibility_perc_all_day_30d,
+c.downtime_prime_30d,
+c.accessibility_perc_prime_30d,
+c.downtime_full_day_30d,
+c.accessibility_perc_full_day_30d,
+
+d.outage_count_60d,
+d.up_status_count_60d,
+d.down_status_count_60d,
+d.downtime_all_day_60d,
+d.accessibility_perc_all_day_60d,
+d.downtime_prime_60d,
+d.accessibility_perc_prime_60d,
+d.downtime_full_day_60d,
+d.accessibility_perc_full_day_60d,
+
+e.outage_count_90d,
+e.up_status_count_90d,
+e.down_status_count_90d,
+e.downtime_all_day_90d,
+e.accessibility_perc_all_day_90d,
+e.downtime_prime_90d,
+e.accessibility_perc_prime_90d,
+e.downtime_full_day_90d,
+e.accessibility_perc_full_day_90d,
+
+b.outage_count_7d/c.outage_count_30d as r_outage_count_7d_30d,
+b.up_status_count_7d/c.up_status_count_30d as r_up_status_count_7d_30d,
+b.down_status_count_7d/c.down_status_count_30d as r_down_status_count_7d_30d,
+b.downtime_all_day_7d/c.downtime_all_day_30d as r_downtime_all_day_7d_30d,
+b.accessibility_perc_all_day_7d/c.accessibility_perc_all_day_30d as r_acc_perc_all_day_7d_30d,
+b.downtime_prime_7d/c.downtime_prime_30d as r_downtime_prime_7d_30d,
+b.accessibility_perc_prime_7d/c.accessibility_perc_prime_30d as r_acc_perc_prime_7d_30d,
+b.downtime_full_day_7d/c.downtime_full_day_30d as r_downtime_full_day_7d_30d,
+b.accessibility_perc_full_day_7d/c.accessibility_perc_full_day_30d as r_acc_perc_full_day_7d_30d,
+
+b.outage_count_7d/d.outage_count_60d as r_outage_count_7d_60d,
+b.up_status_count_7d/d.up_status_count_60d as r_up_status_count_7d_60d,
+b.down_status_count_7d/d.down_status_count_60d as r_down_status_count_7d_60d,
+b.downtime_all_day_7d/d.downtime_all_day_60d as r_downtime_all_day_7d_60d,
+b.accessibility_perc_all_day_7d/d.accessibility_perc_all_day_60d as r_acc_perc_all_day_7d_60d,
+b.downtime_prime_7d/d.downtime_prime_60d as r_downtime_prime_7d_60d,
+b.accessibility_perc_prime_7d/d.accessibility_perc_prime_60d as r_acc_perc_prime_7d_60d,
+b.downtime_full_day_7d/d.downtime_full_day_60d as r_downtime_full_day_7d_60d,
+b.accessibility_perc_full_day_7d/d.accessibility_perc_full_day_60d as r_acc_perc_full_day_7d_60d,
+
+b.outage_count_7d/e.outage_count_90d as r_outage_count_7d_90d,
+b.up_status_count_7d/e.up_status_count_90d as r_up_status_count_7d_90d,
+b.down_status_count_7d/e.down_status_count_90d as r_down_status_count_7d_90d,
+b.downtime_all_day_7d/e.downtime_all_day_90d as r_downtime_all_day_7d_90d,
+b.accessibility_perc_all_day_7d/e.accessibility_perc_all_day_90d as r_accessibility_perc_all_day_7d_90d,
+b.downtime_prime_7d/e.downtime_prime_90d as r_us_downtime_prime_7d_90d,
+b.accessibility_perc_prime_7d/e.accessibility_perc_prime_90d as r_acc_perc_prime_7d_90d,
+b.downtime_full_day_7d/e.downtime_full_day_90d as r_downtime_full_day_7d_90d,
+b.accessibility_perc_full_day_7d/e.accessibility_perc_full_day_90d as r_acc_perc_full_day_7d_90d
+FROM  mlmodel_data.CG_DAT0_NW_base_access_202109 a 
+left join mlmodel_data.CG_DAT1_NW_acc_Agg_7d_202109 b
+on a.full_account_number=b.full_account_number
+left join  mlmodel_data.CG_DAT2_NW_acc_Agg_30d_202109 c
+on a.full_account_number=c.full_account_number
+left join  mlmodel_data.CG_DAT3_NW_acc_Agg_60d_202109 d
+on a.full_account_number=d.full_account_number
+left join  mlmodel_data.CG_DAT4_NW_acc_Agg_90d_202109 e
+on a.full_account_number=e.full_account_number;
+
+/*A/O data*/
+CREATE TABLE  mlmodel_data.CG_DAT0_A_O_202109 AS 
+SELECT DISTINCT
+EVENT_DT,
+ECID,
+TREATMENT_TYPE,
+TREATMENT_TITLE_EN,	
+TREATMENT_DESCRIPTION_EN,	
+DISPOSITION,               
+(case when Line_of_Business IN( 'F','I') then 'Fido' else 'Rogers' end) AS BRAND, 
+(case when TOOL_TYPE = 'TF'   then 'CARE' 
+      when TOOL_TYPE = 'TR'   then 'CARE'
+	  when TOOL_TYPE = 'URC'  then 'CARE' 
+	  when TOOL_TYPE = 'URR'  then 'RETAIL' 
+	else 'Other' end) AS CHANNEL 
+FROM sascdm.CMT_REPORTING_ALL
+WHERE  event_dt <=  '2021-09-30'
+AND  event_dt >=  '2021-07-01' 
+AND OFFER_OR_ACTION='Offer'
+AND DISPOSITION IN ('Accepted','Interested','Declined');
+
+create table mlmodel_data.CG_DAT1_A_O_202109 as
+select ecid, 
+sum(case when treatment_type = "AAL" and DISPOSITION = 'Accepted' then 1 else 0 end) as AAL_Accepted,
+sum(case when treatment_type in ("Recomm", "RecommendedPlans") and DISPOSITION = 'Accepted' then 1 else 0 end) as Recomm_Accepted,
+sum(case when treatment_type = "RecommEOP" and DISPOSITION = 'Accepted' then 1 else 0 end) as RecommEOP_Accepted,
+sum(case when treatment_type = "RecommLoyalty" and DISPOSITION = 'Accepted' then 1 else 0 end) as RecommLoyalty_Accepted,
+sum(case when treatment_type = "DEFAULT" and DISPOSITION = 'Accepted' then 1 else 0 end) as DEFAULT_Accepted,
+sum(case when treatment_type = "DeviceProtection" and DISPOSITION = 'Accepted' then 1 else 0 end) as DeviceProtection_Accepted,
+sum(case when treatment_type = "IgniteTVRecommendedPlan" and DISPOSITION = 'Accepted' then 1 else 0 end) as IgniteTVRecommendedPlan_Accepted,
+sum(case when treatment_type = "LTRRiskResi" and DISPOSITION = 'Accepted' then 1 else 0 end) as LTRRiskResi_Accepted,
+sum(case when treatment_type = "ResiAddBB" and DISPOSITION = 'Accepted' then 1 else 0 end) as ResiAddBB_Accepted,
+sum(case when treatment_type = "ResiAddIgniteTV" and DISPOSITION = 'Accepted' then 1 else 0 end) as ResiAddIgniteTV_Accepted,
+sum(case when treatment_type = "ResiAddWRLS" and DISPOSITION = 'Accepted' then 1 else 0 end) as ResiAddWRLS_Accepted,
+sum(case when treatment_type = "ResiRetention" and DISPOSITION = 'Accepted' then 1 else 0 end) as ResiRetention_Accepted,
+sum(case when treatment_type = "SHM" and DISPOSITION = 'Accepted' then 1 else 0 end) as SHM_Accepted,
+sum(case when treatment_type = "Tablet" and DISPOSITION = 'Accepted' then 1 else 0 end) as Tablet_Accepted,
+sum(case when treatment_type = "VAS" and DISPOSITION = 'Accepted' then 1 else 0 end) as VAS_Accepted,
+sum(case when treatment_type = "WirelessRenewal" and DISPOSITION = 'Accepted' then 1 else 0 end) as WirelessRenewal_Accepted,
+sum(case when treatment_type = "WirelessRetention" and DISPOSITION = 'Accepted' then 1 else 0 end) as WirelessRetention_Accepted,
+sum(case when treatment_type = "WRLSAddResi" and DISPOSITION = 'Accepted' then 1 else 0 end) as WRLSAddResi_Accepted,
+
+sum(case when treatment_type = "AAL" and DISPOSITION = 'Declined' then 1 else 0 end) as AAL_Declined,
+sum(case when treatment_type in ("Recomm", "RecommendedPlans") and DISPOSITION = 'Declined' then 1 else 0 end) as Recomm_Declined,
+sum(case when treatment_type = "RecommEOP" and DISPOSITION = 'Declined' then 1 else 0 end) as RecommEOP_Declined,
+sum(case when treatment_type = "RecommLoyalty" and DISPOSITION = 'Declined' then 1 else 0 end) as RecommLoyalty_Declined,
+sum(case when treatment_type = "DEFAULT" and DISPOSITION = 'Declined' then 1 else 0 end) as DEFAULT_Declined,
+sum(case when treatment_type = "DeviceProtection" and DISPOSITION = 'Declined' then 1 else 0 end) as DeviceProtection_Declined,
+sum(case when treatment_type = "IgniteTVRecommendedPlan" and DISPOSITION = 'Declined' then 1 else 0 end) as IgniteTVRecommendedPlan_Declined,
+sum(case when treatment_type = "LTRRiskResi" and DISPOSITION = 'Declined' then 1 else 0 end) as LTRRiskResi_Declined,
+sum(case when treatment_type = "ResiAddBB" and DISPOSITION = 'Declined' then 1 else 0 end) as ResiAddBB_Declined,
+sum(case when treatment_type = "ResiAddIgniteTV" and DISPOSITION = 'Declined' then 1 else 0 end) as ResiAddIgniteTV_Declined,
+sum(case when treatment_type = "ResiAddWRLS" and DISPOSITION = 'Declined' then 1 else 0 end) as ResiAddWRLS_Declined,
+sum(case when treatment_type = "ResiRetention" and DISPOSITION = 'Declined' then 1 else 0 end) as ResiRetention_Declined,
+sum(case when treatment_type = "SHM" and DISPOSITION = 'Declined' then 1 else 0 end) as SHM_Declined,
+sum(case when treatment_type = "Tablet" and DISPOSITION = 'Declined' then 1 else 0 end) as Tablet_Declined,
+sum(case when treatment_type = "VAS" and DISPOSITION = 'Declined' then 1 else 0 end) as VAS_Declined,
+sum(case when treatment_type = "WirelessRenewal" and DISPOSITION = 'Declined' then 1 else 0 end) as WirelessRenewal_Declined,
+sum(case when treatment_type = "WirelessRetention" and DISPOSITION = 'Declined' then 1 else 0 end) as WirelessRetention_Declined,
+sum(case when treatment_type = "WRLSAddResi" and DISPOSITION = 'Declined' then 1 else 0 end) as WRLSAddResi_Declined,
+
+sum(case when treatment_type = "AAL" and DISPOSITION = 'Interested' then 1 else 0 end) as AAL_Interested,
+sum(case when treatment_type in ("Recomm", "RecommendedPlans") and DISPOSITION = 'Interested' then 1 else 0 end) as Recomm_Interested,
+sum(case when treatment_type = "RecommEOP" and DISPOSITION = 'Interested' then 1 else 0 end) as RecommEOP_Interested,
+sum(case when treatment_type = "RecommLoyalty" and DISPOSITION = 'Interested' then 1 else 0 end) as RecommLoyalty_Interested,
+sum(case when treatment_type = "DEFAULT" and DISPOSITION = 'Interested' then 1 else 0 end) as DEFAULT_Interested,
+sum(case when treatment_type = "DeviceProtection" and DISPOSITION = 'Interested' then 1 else 0 end) as DeviceProtection_Interested,
+sum(case when treatment_type = "IgniteTVRecommendedPlan" and DISPOSITION = 'Interested' then 1 else 0 end) as IgnTVRecommPlan_Interested,
+sum(case when treatment_type = "LTRRiskResi" and DISPOSITION = 'Interested' then 1 else 0 end) as LTRRiskResi_Interested,
+sum(case when treatment_type = "ResiAddBB" and DISPOSITION = 'Interested' then 1 else 0 end) as ResiAddBB_Interested,
+sum(case when treatment_type = "ResiAddIgniteTV" and DISPOSITION = 'Interested' then 1 else 0 end) as ResiAddIgniteTV_Interested,
+sum(case when treatment_type = "ResiAddWRLS" and DISPOSITION = 'Interested' then 1 else 0 end) as ResiAddWRLS_Interested,
+sum(case when treatment_type = "ResiRetention" and DISPOSITION = 'Interested' then 1 else 0 end) as ResiRetention_Interested,
+sum(case when treatment_type = "SHM" and DISPOSITION = 'Interested' then 1 else 0 end) as SHM_Interested,
+sum(case when treatment_type = "Tablet" and DISPOSITION = 'Interested' then 1 else 0 end) as Tablet_Interested,
+sum(case when treatment_type = "VAS" and DISPOSITION = 'Interested' then 1 else 0 end) as VAS_Interested,
+sum(case when treatment_type = "WirelessRenewal" and DISPOSITION = 'Interested' then 1 else 0 end) as WirelessRenewal_Interested,
+sum(case when treatment_type = "WirelessRetention" and DISPOSITION = 'Interested' then 1 else 0 end) as WirelessRetention_Interested,
+sum(case when treatment_type = "WRLSAddResi" and DISPOSITION = 'Interested' then 1 else 0 end) as WRLSAddResi_Interested,
+sum(case when  DISPOSITION = 'Accepted' then 1 else 0 end) as Accepted,
+sum(case when  DISPOSITION = 'Declined' then 1 else 0 end) as Declined,
+sum(case when  DISPOSITION = 'Interested' then 1 else 0 end) as Interested
+from  mlmodel_data.CG_DAT0_A_O_202109
+group by 1;
+
+/*CCH*/
+create table mlmodel_data.CG_DAT0_CCH_202109 as 
+select 
+ecid, 
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%WINBACK%' then 1 else 0 end) as WINBACK,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%AAL%' then 1 else 0 end) as AAL,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%P2P%' then 1 else 0 end) as P2P,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%ELC%' then 1 else 0 end) as ELC,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%RET%' then 1 else 0 end) as RET,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%UCS%' then 1 else 0 end) as UCS,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%WIR%' then 1 else 0 end) as WIR,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%RES_MUL%' then 1 else 0 end) as RES_MUL,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%ACQ%' then 1 else 0 end) as ACQ,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%RES_IGN%' then 1 else 0 end) as RES_IGN,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%INT%' then 1 else 0 end) as INT,
+sum(case when upper(CDM_CAMPAIGN_GROUP_CODE) like '%TV%' then 1 else 0 end) as TV,
+
+count(distinct cdm_campaign_cd) AS Nbrs_cdm_camps,
+sum(case when cdm_list_lob not IN ('W','O','F','I','C') then 1 else 0 end ) as  Nbrs_RESI_camps,
+sum(case when cdm_list_lob IN ('M','R') then 1 else 0 end ) as  Nbrs_WLS_camps,
+
+sum(CASE WHEN  CDM_CHANNEL_CD IN ('APP') THEN 1 else 0 end) as Nbrs_APP_cdm_camps,
+sum(CASE WHEN  CDM_CHANNEL_CD IN ('INB') THEN 1 else 0 end) as Nbrs_INB_cdm_camps,
+sum(CASE WHEN  CDM_CHANNEL_CD IN ('PLG') THEN 1 else 0 end) as Nbrs_PLG_cdm_camps,
+sum(CASE WHEN  CDM_CHANNEL_CD IN ('UN') THEN 1 else 0 end) as Nbrs_UN_cdm_camps,
+sum(CASE WHEN  CDM_CHANNEL_CD IN ('_EM','EM') THEN 1 else 0 end) as Nbrs_EM_cdm_camps,
+sum(CASE WHEN  CDM_CHANNEL_CD IN ('SS','SMS') THEN 1 else 0 end) as Nbrs_SMS_cdm_camps,
+sum(CASE WHEN  CDM_CHANNEL_CD IN ('TM') THEN 1 else 0 end) as Nbrs_TM_cdm_camps,
+sum(CASE WHEN  CDM_CHANNEL_CD IN ('DM') THEN 1 else 0 end) as Nbrs_DM_cdm_camps,
+max(cdm_campaign_start_date) as Latest_cdm_camp_Start,
+min(cdm_campaign_start_date) as Earliest_cdm_camp_Start,
+max(cdm_campaign_end_date) as Latest_cdm_camp_End,
+min(cdm_campaign_end_date) as Earliest_cdm_camp_End
+from sascdm.V_CCH_MA_CONTACTS
+where build_date <=  '2021-09-30'
+AND  build_date >=  '2021-04-01' 
+AND CDM_LIST_LOB in ('W','O','F','I','C','M','R')  
+and Contact_status='Executed'
+and  ecid is not null
+and coalesce(contact_status,'x') <> 'Failed' 
+/*and trim(cdm_control_group_type_cd) not in ('_ST', '_AU')*/
+group by 1;
+
+/*Appending OM*/
+create table mlmodel_data.CG_DAT8_CH_IGN_bdl_up_202109 as
+select 
+a.*,
+b.BillPayments_90 as BillPayments_90,
+b.account_90 as account_90,
+b.bill_90 as bill_90,
+b.registration_90 as registration_90,
+b.signin_90 as signin_90,
+b.shop_90 as shop_90,
+b.support_90 as support_90,
+b.service_90 as service_90,
+b.cancel_90 as cancel_90,
+b.claim_90 as claim_90,
+b.tv_90 as tv_90,
+b.tv_package_90 as tv_package_90,
+b.NUMV_IGN_BUNDL_90 as NUMV_IGN_BUNDL_90,
+b.internet_90 as internet_90,
+b.numv_tv_pg_90 as numv_tv_pg_90,
+b.numv_how_to_order_tv_pg_90 as numv_how_to_order_tv_pg_90,
+b.numv_tv_pkg_pg_90 as numv_tv_pkg_pg_90,
+b.numv_tv_promo_pg_90 as numv_tv_promo_pg_90,
+b.numv_4k_tv_pg_90 as numv_4k_tv_pg_90,
+b.numv_anyplace_tv_pg_90 as numv_anyplace_tv_pg_90,
+b.numv_compare_tv_pg_90 as numv_compare_tv_pg_90,
+b.numv_tv_hardware_pg_90 as numv_tv_hardware_pg_90,
+b.numv_tv_pkge_prcng_pg_90 as numv_tv_pkge_prcng_pg_90,
+b.numv_tv_free_promo_pg_90 as numv_tv_free_promo_pg_90,
+b.numv_tv_start_pkge_pg_90 as numv_tv_start_pkge_pg_90,
+b.numv_tv_tmn_pg_90 as numv_tv_tmn_pg_90,
+b.numv_bb_pg_90 as numv_bb_pg_90,
+b.numv_pkg_prcng_pg_90 as numv_pkg_prcng_pg_90,
+b.numv_bb_modm_rtrs_pg_90 as numv_bb_modm_rtrs_pg_90,
+b.numv_bb_promo_pg_90 as numv_bb_promo_pg_90,
+b.numv_bb_gmng_pg_90 as numv_bb_gmng_pg_90,
+b.numv_bb_hgh_spd_pg_90 as numv_bb_hgh_spd_pg_90,
+b.numv_bb_stry_pg_90 as numv_bb_stry_pg_90,
+b.numv_bndl_pg_90 as numv_bndl_pg_90,
+b.numv_bndl_tv_bb_pg_90 as numv_bndl_tv_bb_pg_90,
+b.numv_bndl_pkg_prcng_pg_90 as numv_bndl_pkg_prcng_pg_90,
+b.numv_bndl_promo_pg_90 as numv_bndl_promo_pg_90,
+b.NUMV_SHM_google_PG_90 as NUMV_SHM_google_PG_90,
+b.NUMV_SHM_PG_90 as NUMV_SHM_PG_90,
+b.NUMV_HM_PG_90 as NUMV_HM_PG_90,
+b.NUMV_MULTIC_PG_90 as NUMV_MULTIC_PG_90,
+b.NUMV_Sports_PG_90 as NUMV_Sports_PG_90,
+b.NUMV_TMN_PG_90 as NUMV_TMN_PG_90,
+b.BillPayments_60 as BillPayments_60,
+b.account_60 as account_60,
+b.bill_60 as bill_60,
+b.registration_60 as registration_60,
+b.signin_60 as signin_60,
+b.shop_60 as shop_60,
+b.support_60 as support_60,
+b.service_60 as service_60,
+b.cancel_60 as cancel_60,
+b.claim_60 as claim_60,
+b.tv_60 as tv_60,
+b.tv_package_60 as tv_package_60,
+b.NUMV_IGN_BUNDL_60 as NUMV_IGN_BUNDL_60,
+b.internet_60 as internet_60,
+b.numv_tv_pg_60 as numv_tv_pg_60,
+b.numv_how_to_order_tv_pg_60 as numv_how_to_order_tv_pg_60,
+b.numv_tv_pkg_pg_60 as numv_tv_pkg_pg_60,
+b.numv_tv_promo_pg_60 as numv_tv_promo_pg_60,
+b.numv_4k_tv_pg_60 as numv_4k_tv_pg_60,
+b.numv_anyplace_tv_pg_60 as numv_anyplace_tv_pg_60,
+b.numv_compare_tv_pg_60 as numv_compare_tv_pg_60,
+b.numv_tv_hardware_pg_60 as numv_tv_hardware_pg_60,
+b.numv_tv_pkge_prcng_pg_60 as numv_tv_pkge_prcng_pg_60,
+b.numv_tv_free_promo_pg_60 as numv_tv_free_promo_pg_60,
+b.numv_tv_start_pkge_pg_60 as numv_tv_start_pkge_pg_60,
+b.numv_tv_tmn_pg_60 as numv_tv_tmn_pg_60,
+b.numv_bb_pg_60 as numv_bb_pg_60,
+b.numv_pkg_prcng_pg_60 as numv_pkg_prcng_pg_60,
+b.numv_bb_modm_rtrs_pg_60 as numv_bb_modm_rtrs_pg_60,
+b.numv_bb_promo_pg_60 as numv_bb_promo_pg_60,
+b.numv_bb_gmng_pg_60 as numv_bb_gmng_pg_60,
+b.numv_bb_hgh_spd_pg_60 as numv_bb_hgh_spd_pg_60,
+b.numv_bb_stry_pg_60 as numv_bb_stry_pg_60,
+b.numv_bndl_pg_60 as numv_bndl_pg_60,
+b.numv_bndl_tv_bb_pg_60 as numv_bndl_tv_bb_pg_60,
+b.numv_bndl_pkg_prcng_pg_60 as numv_bndl_pkg_prcng_pg_60,
+b.numv_bndl_promo_pg_60 as numv_bndl_promo_pg_60,
+b.NUMV_SHM_google_PG_60 as NUMV_SHM_google_PG_60,
+b.NUMV_SHM_PG_60 as NUMV_SHM_PG_60,
+b.NUMV_HM_PG_60 as NUMV_HM_PG_60,
+b.NUMV_MULTIC_PG_60 as NUMV_MULTIC_PG_60,
+b.NUMV_Sports_PG_60 as NUMV_Sports_PG_60,
+b.NUMV_TMN_PG_60 as NUMV_TMN_PG_60,
+b.BillPayments_30 as BillPayments_30,
+b.account_30 as account_30,
+b.bill_30 as bill_30,
+b.registration_30 as registration_30,
+b.signin_30 as signin_30,
+b.shop_30 as shop_30,
+b.support_30 as support_30,
+b.service_30 as service_30,
+b.cancel_30 as cancel_30,
+b.claim_30 as claim_30,
+b.tv_30 as tv_30,
+b.tv_package_30 as tv_package_30,
+b.NUMV_IGN_BUNDL_30 as NUMV_IGN_BUNDL_30,
+b.internet_30 as internet_30,
+b.numv_tv_pg_30 as numv_tv_pg_30,
+b.numv_how_to_order_tv_pg_30 as numv_how_to_order_tv_pg_30,
+b.numv_tv_pkg_pg_30 as numv_tv_pkg_pg_30,
+b.numv_tv_promo_pg_30 as numv_tv_promo_pg_30,
+b.numv_4k_tv_pg_30 as numv_4k_tv_pg_30,
+b.numv_anyplace_tv_pg_30 as numv_anyplace_tv_pg_30,
+b.numv_compare_tv_pg_30 as numv_compare_tv_pg_30,
+b.numv_tv_hardware_pg_30 as numv_tv_hardware_pg_30,
+b.numv_tv_pkge_prcng_pg_30 as numv_tv_pkge_prcng_pg_30,
+b.numv_tv_free_promo_pg_30 as numv_tv_free_promo_pg_30,
+b.numv_tv_start_pkge_pg_30 as numv_tv_start_pkge_pg_30,
+b.numv_tv_tmn_pg_30 as numv_tv_tmn_pg_30,
+b.numv_bb_pg_30 as numv_bb_pg_30,
+b.numv_pkg_prcng_pg_30 as numv_pkg_prcng_pg_30,
+b.numv_bb_modm_rtrs_pg_30 as numv_bb_modm_rtrs_pg_30,
+b.numv_bb_promo_pg_30 as numv_bb_promo_pg_30,
+b.numv_bb_gmng_pg_30 as numv_bb_gmng_pg_30,
+b.numv_bb_hgh_spd_pg_30 as numv_bb_hgh_spd_pg_30,
+b.numv_bb_stry_pg_30 as numv_bb_stry_pg_30,
+b.numv_bndl_pg_30 as numv_bndl_pg_30,
+b.numv_bndl_tv_bb_pg_30 as numv_bndl_tv_bb_pg_30,
+b.numv_bndl_pkg_prcng_pg_30 as numv_bndl_pkg_prcng_pg_30,
+b.numv_bndl_promo_pg_30 as numv_bndl_promo_pg_30,
+b.NUMV_SHM_google_PG_30 as NUMV_SHM_google_PG_30,
+b.NUMV_SHM_PG_30 as NUMV_SHM_PG_30,
+b.NUMV_HM_PG_30 as NUMV_HM_PG_30,
+b.NUMV_MULTIC_PG_30 as NUMV_MULTIC_PG_30,
+b.NUMV_Sports_PG_30 as NUMV_Sports_PG_30,
+b.NUMV_TMN_PG_30 as NUMV_TMN_PG_30
+FROM mlmodel_data.CG_DAT7_CH_IGN_bdl_up_202109 a 
+left join mlmodel_data.DAT9_OM_BB_TV_AGG_90_202108 b on 
+a.ecid = b.ecid;
+
+/*Adding NW*/
+create table mlmodel_data.CG_DAT9_CH_IGN_bdl_up_202109 as
+select distinct 
+a.*,
+b.download_speed_mbps_7d,
+b.upload_speed_mbps_7d,
+b.up_mbytes_7d,
+b.down_mbytes_7d,
+b.total_usg_mbytes_7d,
+b.us_speed_attainable_full_7d,
+b.us_speed_attainable_prime_7d,
+b.actual_impact_counter_7d,
+b.download_speed_mbps_30d,
+b.upload_speed_mbps_30d,
+b.up_mbytes_30d,
+b.down_mbytes_30d,
+b.total_usg_mbytes_30d,
+b.us_speed_attainable_full_30d,
+b.us_speed_attainable_prime_30d,
+b.actual_impact_counter_30d,
+b.download_speed_mbps_60d,
+b.upload_speed_mbps_60d,
+b.up_mbytes_60d,
+b.down_mbytes_60d,
+b.total_usg_mbytes_60d,
+b.us_speed_attainable_full_60d,
+b.us_speed_attainable_prime_60d,
+b.actual_impact_counter_60d,
+b.download_speed_mbps_90d,
+b.upload_speed_mbps_90d,
+b.up_mbytes_90d,
+b.down_mbytes_90d,
+b.total_usg_mbytes_90d,
+b.us_speed_attainable_full_90d,
+b.us_speed_attainable_prime_90d,
+b.actual_impact_counter_90d,
+b.r_down_sd_mbps_7d_30d,
+b.r_up_sd_mbps_7d_30d,
+b.r_up_mbytes_7d_30d,
+b.r_down_mbytes_7d_30d,
+b.r_total_usg_mbytes_7d_30d,
+b.r_us_speed_attain_full_7d_30d,
+b.r_us_speed_attain_prime_7d_30d,
+b.r_act_impact_count_7d_30d,
+b.r_down_sd_mbps_7d_60d,
+b.r_up_sd_mbps_7d_60d,
+b.r_up_mbytes_7d_60d,
+b.r_down_mbytes_7d_60d,
+b.r_total_usg_mbytes_7d_60d,
+b.r_us_speed_attain_full_7d_60d,
+b.r_us_speed_attain_prime_7d_60d,
+b.r_act_impact_count_7d_60d,
+b.r_down_sd_mbps_7d_90d,
+b.r_up_sd_mbps_7d_90d,
+b.r_up_mbytes_7d_90d,
+b.r_down_mbytes_7d_90d,
+b.r_total_usg_mbytes_7d_90d,
+b.r_us_speed_attain_full_7d_90d,
+b.r_us_speed_attain_prime_7d_90d,
+b.r_act_impact_count_7d_90d,
+c.outage_count_7d,
+c.up_status_count_7d,
+c.down_status_count_7d,
+c.downtime_all_day_7d,
+c.accessibility_perc_all_day_7d,
+c.downtime_prime_7d,
+c.accessibility_perc_prime_7d,
+c.downtime_full_day_7d,
+c.accessibility_perc_full_day_7d,
+c.outage_count_30d,
+c.up_status_count_30d,
+c.down_status_count_30d,
+c.downtime_all_day_30d,
+c.accessibility_perc_all_day_30d,
+c.downtime_prime_30d,
+c.accessibility_perc_prime_30d,
+c.downtime_full_day_30d,
+c.accessibility_perc_full_day_30d,
+c.outage_count_60d,
+c.up_status_count_60d,
+c.down_status_count_60d,
+c.downtime_all_day_60d,
+c.accessibility_perc_all_day_60d,
+c.downtime_prime_60d,
+c.accessibility_perc_prime_60d,
+c.downtime_full_day_60d,
+c.accessibility_perc_full_day_60d,
+c.outage_count_90d,
+c.up_status_count_90d,
+c.down_status_count_90d,
+c.downtime_all_day_90d,
+c.accessibility_perc_all_day_90d,
+c.downtime_prime_90d,
+c.accessibility_perc_prime_90d,
+c.downtime_full_day_90d,
+c.accessibility_perc_full_day_90d,
+c.r_outage_count_7d_30d,
+c.r_up_status_count_7d_30d,
+c.r_down_status_count_7d_30d,
+c.r_downtime_all_day_7d_30d,
+c.r_acc_perc_all_day_7d_30d,
+c.r_downtime_prime_7d_30d,
+c.r_acc_perc_prime_7d_30d,
+c.r_downtime_full_day_7d_30d,
+c.r_acc_perc_full_day_7d_30d,
+c.r_outage_count_7d_60d,
+c.r_up_status_count_7d_60d,
+c.r_down_status_count_7d_60d,
+c.r_downtime_all_day_7d_60d,
+c.r_acc_perc_all_day_7d_60d,
+c.r_downtime_prime_7d_60d,
+c.r_acc_perc_prime_7d_60d,
+c.r_downtime_full_day_7d_60d,
+c.r_acc_perc_full_day_7d_60d,
+c.r_outage_count_7d_90d,
+c.r_up_status_count_7d_90d,
+c.r_down_status_count_7d_90d,
+c.r_downtime_all_day_7d_90d,
+c.r_accessibility_perc_all_day_7d_90d,
+c.r_us_downtime_prime_7d_90d,
+c.r_acc_perc_prime_7d_90d,
+c.r_downtime_full_day_7d_90d,
+c.r_acc_perc_full_day_7d_90d
+FROM mlmodel_data.CG_DAT8_CH_IGN_bdl_up_202109 a 
+left join mlmodel_data.CG_DAT5_NW_Agg_90d_202109 b on 
+a.CAN = b.account 
+left join mlmodel_data.CG_DAT5_NW_acc_202109 c on 
+a.can = c.full_account_number;
+
+/*Add CCH*/
+/*Need to update the reference date*/
+create table mlmodel_data.CG_DAT10_CH_IGN_bdl_up_202109 as
+select distinct 
+a.*,
+b.WINBACK,
+b.AAL,
+b.P2P,
+b.ELC,
+b.RET,
+b.UCS,
+b.WIR,
+b.RES_MUL,
+b.ACQ,
+b.RES_IGN,
+b.INT,
+b.TV,
+b.Nbrs_RESI_camps,
+b.Nbrs_WLS_camps,
+b.Nbrs_APP_cdm_camps,
+b.Nbrs_INB_cdm_camps,
+b.Nbrs_PLG_cdm_camps,
+b.Nbrs_UN_cdm_camps,
+b.Nbrs_EM_cdm_camps,
+b.Nbrs_SMS_cdm_camps,
+b.Nbrs_TM_cdm_camps,
+b.Nbrs_DM_cdm_camps,
+DATEDIFF('2021-09-30', b.Latest_cdm_camp_Start) AS DS_Latest_cdm_camp_Start,
+DATEDIFF('2021-09-30', b.Earliest_cdm_camp_Start) AS DS_Earliest_cdm_camp_Start,
+DATEDIFF('2021-09-30',b.Latest_cdm_camp_End) AS DS_Latest_cdm_camp_End,
+DATEDIFF('2021-09-30',b.Earliest_cdm_camp_End) AS DS_Earliest_cdm_camp_End 
+FROM mlmodel_data.CG_DAT9_CH_IGN_bdl_up_202109 a 
+left join mlmodel_data.CG_DAT0_CCH_202108 b on 
+a.ecid = b.ecid;
+
+/*Add AO*/
+create table mlmodel_data.CG_DAT11_CH_IGN_bdl_up_202109 as
+select distinct
+a.*,
+b.AAL_Accepted,
+b.Recomm_Accepted,
+b.RecommEOP_Accepted,
+b.RecommLoyalty_Accepted,
+b.DEFAULT_Accepted,
+b.DeviceProtection_Accepted,
+b.IgniteTVRecommendedPlan_Accepted,
+b.LTRRiskResi_Accepted,
+b.ResiAddBB_Accepted,
+b.ResiAddIgniteTV_Accepted,
+b.ResiAddWRLS_Accepted,
+b.ResiRetention_Accepted,
+b.SHM_Accepted,
+b.Tablet_Accepted,
+b.VAS_Accepted,
+b.WirelessRenewal_Accepted,
+b.WirelessRetention_Accepted,
+b.WRLSAddResi_Accepted,
+b.AAL_Declined,
+b.Recomm_Declined,
+b.RecommEOP_Declined,
+b.RecommLoyalty_Declined,
+b.DEFAULT_Declined,
+b.DeviceProtection_Declined,
+b.IgniteTVRecommendedPlan_Declined,
+b.LTRRiskResi_Declined,
+b.ResiAddBB_Declined,
+b.ResiAddIgniteTV_Declined,
+b.ResiAddWRLS_Declined,
+b.ResiRetention_Declined,
+b.SHM_Declined,
+b.Tablet_Declined,
+b.VAS_Declined,
+b.WirelessRenewal_Declined,
+b.WirelessRetention_Declined,
+b.WRLSAddResi_Declined,
+b.AAL_Interested,
+b.Recomm_Interested,
+b.RecommEOP_Interested,
+b.RecommLoyalty_Interested,
+b.DEFAULT_Interested,
+b.DeviceProtection_Interested,
+b.IgnTVRecommPlan_Interested,
+b.LTRRiskResi_Interested,
+b.ResiAddBB_Interested,
+b.ResiAddIgniteTV_Interested,
+b.ResiAddWRLS_Interested,
+b.ResiRetention_Interested,
+b.SHM_Interested,
+b.Tablet_Interested,
+b.VAS_Interested,
+b.WirelessRenewal_Interested,
+b.WirelessRetention_Interested,
+b.WRLSAddResi_Interested,
+b.Accepted,
+b.Declined,
+b.Interested
+FROM mlmodel_data.CG_DAT10_CH_IGN_bdl_up_202109 a
+left join mlmodel_data.CG_DAT1_A_O_202109 b on 
+a.ecid = b.ecid;
+
+/*Select final variables*/
+%python
+df = spark.sql("""Select * from mlmodel_data.CG_DAT11_CH_IGN_bdl_up_202109""")
+
+df_3_2=df['CUSTOMER_ID','CAN','ECID','CR_Key','CUSTOMER_LOCATION_ID','CUSTOMER_MULTI_PRODUCT',
+ 'pre_prod_tier_max',
+ 'sfu_mdu',
+ 'IPTV_Num_NC_Disconn',
+ 'RINT_Num_NC_Disconn',
+ 'int_hf50',
+ 'int_hf80',
+ 'int_hf175',
+ 'int_w2w_wifihub',
+ 'int_20',
+ 'int_w2w_wifi_beacon',
+ 'internet_modem',
+ 'int_num_act_camp',
+ 'int_hf10_num_act',
+ 'int_hf15_num_act',
+ 'int_hf30_num_act',
+ 'int_hf50_num_act',
+ 'int_hf60_num_act',
+ 'int_hf80_num_act',
+ 'int_hf150_num_act',
+ 'int_hf175_num_act',
+ 'int_hf250_num_act',
+ 'int_unltd_250_num_act',
+ 'int_unltd_251_num_act',
+ 'int_unltd_100_num_act',
+ 'int_unltd_70_num_act',
+ 'int_60_num_act',
+ 'int_30_num_act',
+ 'int_15_num_act',
+ 'int_5_num_act',
+ 'int_unltd_1g_num_act',
+ 'int_express_num_act',
+ 'int_extreme_num_act',
+ 'int_extreme_plus_num_act',
+ 'int_lite_num_act',
+ 'int_ulite_num_act',
+ 'int_ultimate_num_act',
+ 'int_w2w_wifihub_num_act',
+ 'int_20_num_act',
+ 'int_w2w_wifi_beacon_num_act',
+ 'int_hf10_num_deact',
+ 'int_hf15_num_deact',
+ 'int_hf30_num_deact',
+ 'int_hf50_num_deact',
+ 'int_hf60_num_deact',
+ 'int_hf80_num_deact',
+ 'int_hf150_num_deact',
+ 'int_hf175_num_deact',
+ 'int_hf250_num_deact',
+ 'int_unltd_250_num_deact',
+ 'int_unltd_251_num_deact',
+ 'int_unltd_70_num_deact',
+ 'int_60_num_deact',
+ 'int_30_num_deact',
+ 'int_15_num_deact',
+ 'int_5_num_deact',
+ 'int_unltd_1g_num_deact',
+ 'int_extreme_num_deact',
+ 'int_extreme_plus_num_deact',
+ 'int_lite_num_deact',
+ 'smb_internet_num_deact',
+ 'int_ulite_num_deact',
+ 'int_ultimate_num_deact',
+ 'int_20_num_deact',
+ 'int_unltd_100_num_act_7d',
+ 'int_unltd_100_num_act_30d',
+ 'int_unltd_1g_num_act_7d',
+ 'int_unltd_1g_num_act_30d',
+ 'int_unltd_1g_num_act_90d',
+ 'int_unltd_1g_num_act_180d',
+ 'int_unltd_1g_num_deact_7d',
+ 'int_unltd_1g_num_deact_30d',
+ 'int_unltd_1g_num_deact_90d',
+ 'int_unltd_250_num_act_7d',
+ 'int_unltd_250_num_act_30d',
+ 'int_unltd_250_num_act_90d',
+ 'int_unltd_250_num_deact_7d',
+ 'int_unltd_250_num_deact_30d',
+ 'int_unltd_251_num_act_7d',
+ 'int_unltd_251_num_act_30d',
+ 'int_unltd_251_num_act_90d',
+ 'int_unltd_251_num_act_180d',
+ 'int_unltd_251_num_deact_7d',
+ 'int_unltd_251_num_deact_30d',
+ 'int_unltd_251_num_deact_90d',
+ 'int_unltd_70_num_act_7d',
+ 'int_unltd_70_num_act_30d',
+ 'int_unltd_70_num_deact_7d',
+ 'int_unltd_70_num_deact_30d',
+ 'ftth_seg',
+ 'ftth_ind',
+ 'pst_net_msf',
+ 'pst_discount',
+ 'pst_tsu_count',
+ 'pst_int_discount',
+ 'pst_int_net_msf',
+ 'pst_int_serv_disc',
+ 'pst_int_serv_net',
+ 'int_net_delta',
+ 'sm_digital_calls_6m',
+ 'sm_t3_calls_6m',
+ 'sm_tech_care_calls_6m',
+ 'sm_digital_calls_3m',
+ 'sm_t3_calls_3m',
+ 'sm_tech_care_calls_3m',
+ 'sm_int_duration_1m',
+ 'sm_digital_calls_1m',
+ 'sm_t3_calls_1m',
+ 'sm_tech_care_calls_1m',
+ 'sm_tv_eop_int_1m',
+ 'sm_rhp_eop_int_1m',
+ 'sm_num_call_tv_1m',
+ 'sm_num_call_int_1m',
+ 'sm_total_num_calls_1m',
+ 'sm_num_call_tv_pso_1m',
+ 'sm_num_call_int_pso_1m',
+ 'sm_num_call_rhp_pso_1m',
+ 'sm_num_call_tv_other_1m',
+ 'sm_num_call_int_other_1m',
+ 'sm_num_call_tv_7d',
+ 'sm_num_call_int_7d',
+ 'sm_total_num_calls_7d',
+ 'sm_num_call_tv_pso_7d',
+ 'sm_num_call_int_pso_7d',
+ 'sm_num_call_rhp_pso_7d',
+ 'sm_num_call_tv_other_7d',
+ 'rtv_num_downgrade_180d',
+ 'iptv_num_nc_disconn_7d',
+ 'rint_num_nc_disconn_7d',
+ 'av_int_discount_6m',
+ 'av_int_serv_disc_6m',
+ 'av_int_equip_override_6m',
+ 'av_ecp_amt_6m',
+ 'av_tve_tier_onetime_3m',
+ 'av_tot_discount_3M',
+ 'av_int_discount_3M',
+ 'av_int_net_msf_3M',
+ 'av_int_serv_disc_3M',
+ 'av_int_serv_net_3M',
+ 'av_int_equip_override_3M',
+ 'av_ecp_amt_3M',
+ 'av_tot_discount_1M',
+ 'av_int_discount_1M',
+ 'av_int_net_msf_1M',
+ 'av_int_serv_disc_1M',
+ 'av_int_serv_net_1M',
+ 'av_int_equip_override_1M',
+ 'av_ecp_amt_1M',
+ 'av_saf_amt_1M',
+ 'tr_neg_rate_amt_6m',
+ 'tot_discount',
+ 'int_discount',
+ 'int_net_msf',
+ 'int_serv_disc',
+ 'int_serv_net',
+ 'int_equip_override',
+ 'int_equip_onetime',
+ 'int_docsis_3_ac_gw',
+ 'int_ethernet_card',
+ 'int_dsl',
+ 'int_num_docsis_3_ac_gw',
+ 'int_num_ethernet_card',
+ 'int_num_dsl',
+ 'tv_box_sd_nonpvr_p',
+ 'tv_box_sd',
+ 'tv_box_hd_pvr_r',
+ 'tv_box_hd_pvr_p',
+ 'tv_box_hd_nonpvr_r',
+ 'tv_box_hd_nonpvr_p',
+ 'tv_box_hd',
+ 'tv_box_nextbox_pvr_r',
+ 'tv_box_nextbox_pvr_p',
+ 'tv_box_nextbox_nonpvr_r',
+ 'tv_box_nextbox_nonpvr_p',
+ 'tv_digital_adapter',
+ 'tv_moxi_r',
+ 'tv_box_nextbox_nonpvr_ro',
+ 'tv_moxi_p',
+ 'tv_box_nextbox_4k_nonpvr_r',
+ 'ts_tv_box_nextbox_4k_nonpvr_p_last_add_date',
+ 'ts_tv_box_nextbox_4k_nonpvr_p_last_drop_date',
+ 'ts_int_dsl_last_add_date',
+ 'ts_int_box_modem_r_last_add_date',
+ 'ts_int_dsl_last_drop_date',
+ 'sm_tv_dur_hrs_unknown_7d',
+ 'sm_tv_dur_hrs_unknown_1m',
+ 'min_tv_dur_hrs_unknown_7d',
+ 'min_tv_dur_hrs_unknown_1m',
+ 'max_tv_max_dur_hrs_7d',
+ 'max_tv_max_dur_hrs_1m',
+ 'max_tv_dur_hrs_unknown_1m',
+ 'av_tv_dur_hrs_unknown_7d',
+ 'av_tv_dur_hrs_unknown_1m',
+ 'av_tv_cnt_sess_other_1m',
+ 'tv_dur_hrs_weekend',
+ 'tv_dur_hrs_unknown',
+ 'max_tv_dur_hrs_unknown',
+ 'avg_tv_dur_hrs_weekend',
+ 'max_tv_dur_hrs_unknown_7d',
+ 'av_tv_cnt_sess_unknown_1m',
+ 'av_tv_cnt_sess_other_7d',
+ 'tv_cnt_sess_weekend',
+ 'avg_tv_dur_hrs_unknown',
+ 'Chng_Int_Serv_Disc',
+ 'Chng_TVE_Tier',
+ 'service_90',
+ 'internet_90',
+ 'numv_tv_pg_90',
+ 'numv_how_to_order_tv_pg_90',
+ 'numv_tv_pkg_pg_90',
+ 'numv_4k_tv_pg_90',
+ 'numv_compare_tv_pg_90',
+ 'numv_tv_hardware_pg_90',
+ 'numv_tv_pkge_prcng_pg_90',
+ 'numv_tv_free_promo_pg_90',
+ 'numv_tv_start_pkge_pg_90',
+ 'numv_tv_tmn_pg_90',
+ 'numv_bb_pg_90',
+ 'numv_pkg_prcng_pg_90',
+ 'numv_bb_modm_rtrs_pg_90',
+ 'numv_bb_hgh_spd_pg_90',
+ 'numv_bb_stry_pg_90',
+ 'numv_bndl_pkg_prcng_pg_90',
+ 'NUMV_SHM_google_PG_90',
+ 'NUMV_HM_PG_90',
+ 'NUMV_TMN_PG_90',
+ 'signin_60',
+ 'service_60',
+ 'internet_60',
+ 'numv_tv_pg_60',
+ 'numv_how_to_order_tv_pg_60',
+ 'numv_tv_pkg_pg_60',
+ 'numv_4k_tv_pg_60',
+ 'numv_compare_tv_pg_60',
+ 'numv_tv_hardware_pg_60',
+ 'numv_tv_pkge_prcng_pg_60',
+ 'numv_tv_free_promo_pg_60',
+ 'numv_tv_start_pkge_pg_60',
+ 'numv_tv_tmn_pg_60',
+ 'numv_bb_pg_60',
+ 'numv_pkg_prcng_pg_60',
+ 'numv_bb_modm_rtrs_pg_60',
+ 'numv_bb_promo_pg_60',
+ 'numv_bb_hgh_spd_pg_60',
+ 'numv_bb_stry_pg_60',
+ 'numv_bndl_pg_60',
+ 'numv_bndl_tv_bb_pg_60',
+ 'numv_bndl_pkg_prcng_pg_60',
+ 'NUMV_SHM_google_PG_60',
+ 'NUMV_HM_PG_60',
+ 'NUMV_TMN_PG_60',
+ 'signin_30',
+ 'service_30',
+ 'tv_30',
+ 'tv_package_30',
+ 'internet_30',
+ 'numv_tv_pg_30',
+ 'numv_how_to_order_tv_pg_30',
+ 'numv_tv_pkg_pg_30',
+ 'numv_4k_tv_pg_30',
+ 'numv_compare_tv_pg_30',
+ 'numv_tv_hardware_pg_30',
+ 'numv_tv_pkge_prcng_pg_30',
+ 'numv_tv_free_promo_pg_30',
+ 'numv_tv_start_pkge_pg_30',
+ 'numv_tv_tmn_pg_30',
+ 'numv_bb_pg_30',
+ 'numv_pkg_prcng_pg_30',
+ 'numv_bb_modm_rtrs_pg_30',
+ 'numv_bb_hgh_spd_pg_30',
+ 'numv_bb_stry_pg_30',
+ 'numv_bndl_pg_30',
+ 'numv_bndl_tv_bb_pg_30',
+ 'numv_bndl_pkg_prcng_pg_30',
+ 'numv_bndl_promo_pg_30',
+ 'NUMV_SHM_google_PG_30',
+ 'NUMV_HM_PG_30',
+ 'NUMV_TMN_PG_30',
+ 'r_up_mbytes_7d_30d',
+ 'r_down_mbytes_7d_30d',
+ 'r_total_usg_mbytes_7d_30d',
+ 'r_up_mbytes_7d_60d',
+ 'r_down_mbytes_7d_60d',
+ 'r_total_usg_mbytes_7d_60d',
+ 'r_up_mbytes_7d_90d',
+ 'r_down_mbytes_7d_90d',
+ 'r_total_usg_mbytes_7d_90d',
+ 'r_outage_count_7d_60d',
+ 'r_up_status_count_7d_60d',
+ 'r_down_status_count_7d_60d',
+ 'r_outage_count_7d_90d',
+ 'r_up_status_count_7d_90d',
+ 'r_down_status_count_7d_90d',
+ 'r_downtime_all_day_7d_90d',
+ 'TV',
+ 'Recomm_Accepted',
+ 'RecommEOP_Accepted',
+ 'RecommLoyalty_Accepted',
+ 'DeviceProtection_Accepted',
+ 'IgniteTVRecommendedPlan_Accepted',
+ 'LTRRiskResi_Accepted',
+ 'ResiAddBB_Accepted',
+ 'ResiAddIgniteTV_Accepted',
+ 'ResiAddWRLS_Accepted',
+ 'ResiRetention_Accepted',
+ 'SHM_Accepted',
+ 'VAS_Accepted',
+ 'WirelessRenewal_Accepted',
+ 'WirelessRetention_Accepted',
+ 'WRLSAddResi_Accepted',
+ 'Recomm_Declined',
+ 'RecommEOP_Declined',
+ 'RecommLoyalty_Declined',
+ 'DEFAULT_Declined',
+ 'DeviceProtection_Declined',
+ 'IgniteTVRecommendedPlan_Declined',
+ 'LTRRiskResi_Declined',
+ 'ResiAddBB_Declined',
+ 'ResiAddIgniteTV_Declined',
+ 'ResiAddWRLS_Declined',
+ 'ResiRetention_Declined',
+ 'SHM_Declined',
+ 'VAS_Declined',
+ 'WirelessRenewal_Declined',
+ 'WirelessRetention_Declined',
+ 'WRLSAddResi_Declined',
+ 'Recomm_Interested',
+ 'RecommEOP_Interested',
+ 'RecommLoyalty_Interested',
+ 'DEFAULT_Interested',
+ 'DeviceProtection_Interested',
+ 'IgnTVRecommPlan_Interested',
+ 'LTRRiskResi_Interested',
+ 'ResiAddBB_Interested',
+ 'ResiAddIgniteTV_Interested',
+ 'ResiAddWRLS_Interested',
+ 'ResiRetention_Interested',
+ 'SHM_Interested',
+ 'VAS_Interested',
+ 'WirelessRenewal_Interested',
+ 'WirelessRetention_Interested',
+ 'WRLSAddResi_Interested']
+
+%python
+df_3_2.write.format("delta").mode("OVERWRITE").option("overwriteSchema", "true").saveAsTable("mlmodel_data.CG_DAT6_CH_IGN_bdl_up_202109_sc")
+
+# export to Azure ML
+
+#df_v_1=pdf_v.drop(['CUSTOMER_ID','CAN','ECID','CR_Key','CUSTOMER_LOCATION_ID'],axis=1)
+
+object_col_v = pdf_v.columns[(df_v_1.dtypes == "category")].tolist()
+obj_col_exld_v=['CUSTOMER_MULTI_PRODUCT','pre_prod_tier_max','sfu_mdu','internet_modem','ftth_seg','ftth_ind',
+'Chng_Int_Serv_Disc','Chng_TVE_Tier']
+
+for i in obj_col_exld_v:
+  cond = df_v_1[i].value_counts(normalize=True) < 0.01
+  others = cond[cond].index
+  others_dict = {k: "others" for k in others}
+  df_v_1[i] = df_v_1[i].replace(others_dict)
+
+df_v_1.select_dtypes(include=['category','object']).head(5)
+
+df_v_2 = pd.get_dummies(df_v_1)
+df_v_3 = df_v_2.fillna(0)
+
+regex = re.compile(r"\[|\]|<", re.IGNORECASE)
+df_v_3.columns = [regex.sub("_", col) if any(x in str(col) for x in set(('[', ']', '<'))) else col for col in df_v_3.columns.values]
+
+df_v_4=df_v_3[['CUSTOMER_ID','CAN','ECID','CR_Key','CUSTOMER_LOCATION_ID',
+ 'IPTV_Num_NC_Disconn',
+ 'RINT_Num_NC_Disconn',
+ 'int_hf50',
+ 'int_hf80',
+ 'int_hf175',
+ 'int_w2w_wifihub',
+ 'int_20',
+ 'int_w2w_wifi_beacon',
+ 'int_num_act_camp',
+ 'int_hf10_num_act',
+ 'int_hf15_num_act',
+ 'int_hf30_num_act',
+ 'int_hf50_num_act',
+ 'int_hf60_num_act',
+ 'int_hf80_num_act',
+ 'int_hf150_num_act',
+ 'int_hf175_num_act',
+ 'int_hf250_num_act',
+ 'int_unltd_250_num_act',
+ 'int_unltd_251_num_act',
+ 'int_unltd_100_num_act',
+ 'int_unltd_70_num_act',
+ 'int_60_num_act',
+ 'int_30_num_act',
+ 'int_15_num_act',
+ 'int_5_num_act',
+ 'int_unltd_1g_num_act',
+ 'int_express_num_act',
+ 'int_extreme_num_act',
+ 'int_extreme_plus_num_act',
+ 'int_lite_num_act',
+ 'int_ulite_num_act',
+ 'int_ultimate_num_act',
+ 'int_w2w_wifihub_num_act',
+ 'int_20_num_act',
+ 'int_w2w_wifi_beacon_num_act',
+ 'int_hf10_num_deact',
+ 'int_hf15_num_deact',
+ 'int_hf30_num_deact',
+ 'int_hf50_num_deact',
+ 'int_hf60_num_deact',
+ 'int_hf80_num_deact',
+ 'int_hf150_num_deact',
+ 'int_hf175_num_deact',
+ 'int_hf250_num_deact',
+ 'int_unltd_250_num_deact',
+ 'int_unltd_251_num_deact',
+ 'int_unltd_70_num_deact',
+ 'int_60_num_deact',
+ 'int_30_num_deact',
+ 'int_15_num_deact',
+ 'int_5_num_deact',
+ 'int_unltd_1g_num_deact',
+ 'int_extreme_num_deact',
+ 'int_extreme_plus_num_deact',
+ 'int_lite_num_deact',
+ 'smb_internet_num_deact',
+ 'int_ulite_num_deact',
+ 'int_ultimate_num_deact',
+ 'int_20_num_deact',
+ 'int_unltd_100_num_act_7d',
+ 'int_unltd_100_num_act_30d',
+ 'int_unltd_1g_num_act_7d',
+ 'int_unltd_1g_num_act_30d',
+ 'int_unltd_1g_num_act_90d',
+ 'int_unltd_1g_num_act_180d',
+ 'int_unltd_1g_num_deact_7d',
+ 'int_unltd_1g_num_deact_30d',
+ 'int_unltd_1g_num_deact_90d',
+ 'int_unltd_250_num_act_7d',
+ 'int_unltd_250_num_act_30d',
+ 'int_unltd_250_num_act_90d',
+ 'int_unltd_250_num_deact_7d',
+ 'int_unltd_250_num_deact_30d',
+ 'int_unltd_251_num_act_7d',
+ 'int_unltd_251_num_act_30d',
+ 'int_unltd_251_num_act_90d',
+ 'int_unltd_251_num_act_180d',
+ 'int_unltd_251_num_deact_7d',
+ 'int_unltd_251_num_deact_30d',
+ 'int_unltd_251_num_deact_90d',
+ 'int_unltd_70_num_act_7d',
+ 'int_unltd_70_num_act_30d',
+ 'int_unltd_70_num_deact_7d',
+ 'int_unltd_70_num_deact_30d',
+ 'pst_net_msf',
+ 'pst_discount',
+ 'pst_tsu_count',
+ 'pst_int_discount',
+ 'pst_int_net_msf',
+ 'pst_int_serv_disc',
+ 'pst_int_serv_net',
+ 'int_net_delta',
+ 'sm_digital_calls_6m',
+ 'sm_t3_calls_6m',
+ 'sm_tech_care_calls_6m',
+ 'sm_digital_calls_3m',
+ 'sm_t3_calls_3m',
+ 'sm_tech_care_calls_3m',
+ 'sm_int_duration_1m',
+ 'sm_digital_calls_1m',
+ 'sm_t3_calls_1m',
+ 'sm_tech_care_calls_1m',
+ 'sm_tv_eop_int_1m',
+ 'sm_rhp_eop_int_1m',
+ 'sm_num_call_tv_1m',
+ 'sm_num_call_int_1m',
+ 'sm_total_num_calls_1m',
+ 'sm_num_call_tv_pso_1m',
+ 'sm_num_call_int_pso_1m',
+ 'sm_num_call_rhp_pso_1m',
+ 'sm_num_call_tv_other_1m',
+ 'sm_num_call_int_other_1m',
+ 'sm_num_call_tv_7d',
+ 'sm_num_call_int_7d',
+ 'sm_total_num_calls_7d',
+ 'sm_num_call_tv_pso_7d',
+ 'sm_num_call_int_pso_7d',
+ 'sm_num_call_rhp_pso_7d',
+ 'sm_num_call_tv_other_7d',
+ 'rtv_num_downgrade_180d',
+ 'iptv_num_nc_disconn_7d',
+ 'rint_num_nc_disconn_7d',
+ 'av_int_discount_6m',
+ 'av_int_serv_disc_6m',
+ 'av_int_equip_override_6m',
+ 'av_ecp_amt_6m',
+ 'av_tve_tier_onetime_3m',
+ 'av_tot_discount_3M',
+ 'av_int_discount_3M',
+ 'av_int_net_msf_3M',
+ 'av_int_serv_disc_3M',
+ 'av_int_serv_net_3M',
+ 'av_int_equip_override_3M',
+ 'av_ecp_amt_3M',
+ 'av_tot_discount_1M',
+ 'av_int_discount_1M',
+ 'av_int_net_msf_1M',
+ 'av_int_serv_disc_1M',
+ 'av_int_serv_net_1M',
+ 'av_int_equip_override_1M',
+ 'av_ecp_amt_1M',
+ 'av_saf_amt_1M',
+ 'tr_neg_rate_amt_6m',
+ 'tot_discount',
+ 'int_discount',
+ 'int_net_msf',
+ 'int_serv_disc',
+ 'int_serv_net',
+ 'int_equip_override',
+ 'int_equip_onetime',
+ 'int_docsis_3_ac_gw',
+ 'int_ethernet_card',
+ 'int_dsl',
+ 'int_num_docsis_3_ac_gw',
+ 'int_num_ethernet_card',
+ 'int_num_dsl',
+ 'tv_box_sd_nonpvr_p',
+ 'tv_box_sd',
+ 'tv_box_hd_pvr_r',
+ 'tv_box_hd_pvr_p',
+ 'tv_box_hd_nonpvr_r',
+ 'tv_box_hd_nonpvr_p',
+ 'tv_box_hd',
+ 'tv_box_nextbox_pvr_r',
+ 'tv_box_nextbox_pvr_p',
+ 'tv_box_nextbox_nonpvr_r',
+ 'tv_box_nextbox_nonpvr_p',
+ 'tv_digital_adapter',
+ 'tv_moxi_r',
+ 'tv_box_nextbox_nonpvr_ro',
+ 'tv_moxi_p',
+ 'tv_box_nextbox_4k_nonpvr_r',
+ 'ts_tv_box_nextbox_4k_nonpvr_p_last_add_date',
+ 'ts_tv_box_nextbox_4k_nonpvr_p_last_drop_date',
+ 'ts_int_dsl_last_add_date',
+ 'ts_int_box_modem_r_last_add_date',
+ 'ts_int_dsl_last_drop_date',
+ 'sm_tv_dur_hrs_unknown_7d',
+ 'sm_tv_dur_hrs_unknown_1m',
+ 'min_tv_dur_hrs_unknown_7d',
+ 'min_tv_dur_hrs_unknown_1m',
+ 'max_tv_max_dur_hrs_7d',
+ 'max_tv_max_dur_hrs_1m',
+ 'max_tv_dur_hrs_unknown_1m',
+ 'av_tv_dur_hrs_unknown_7d',
+ 'av_tv_dur_hrs_unknown_1m',
+ 'av_tv_cnt_sess_other_1m',
+ 'tv_dur_hrs_weekend',
+ 'tv_dur_hrs_unknown',
+ 'max_tv_dur_hrs_unknown',
+ 'avg_tv_dur_hrs_weekend',
+ 'max_tv_dur_hrs_unknown_7d',
+ 'av_tv_cnt_sess_unknown_1m',
+ 'av_tv_cnt_sess_other_7d',
+ 'tv_cnt_sess_weekend',
+ 'avg_tv_dur_hrs_unknown',
+ 'service_90',
+ 'internet_90',
+ 'numv_tv_pg_90',
+ 'numv_how_to_order_tv_pg_90',
+ 'numv_tv_pkg_pg_90',
+ 'numv_4k_tv_pg_90',
+ 'numv_compare_tv_pg_90',
+ 'numv_tv_hardware_pg_90',
+ 'numv_tv_pkge_prcng_pg_90',
+ 'numv_tv_free_promo_pg_90',
+ 'numv_tv_start_pkge_pg_90',
+ 'numv_tv_tmn_pg_90',
+ 'numv_bb_pg_90',
+ 'numv_pkg_prcng_pg_90',
+ 'numv_bb_modm_rtrs_pg_90',
+ 'numv_bb_hgh_spd_pg_90',
+ 'numv_bb_stry_pg_90',
+ 'numv_bndl_pkg_prcng_pg_90',
+ 'NUMV_SHM_google_PG_90',
+ 'NUMV_HM_PG_90',
+ 'NUMV_TMN_PG_90',
+ 'signin_60',
+ 'service_60',
+ 'internet_60',
+ 'numv_tv_pg_60',
+ 'numv_how_to_order_tv_pg_60',
+ 'numv_tv_pkg_pg_60',
+ 'numv_4k_tv_pg_60',
+ 'numv_compare_tv_pg_60',
+ 'numv_tv_hardware_pg_60',
+ 'numv_tv_pkge_prcng_pg_60',
+ 'numv_tv_free_promo_pg_60',
+ 'numv_tv_start_pkge_pg_60',
+ 'numv_tv_tmn_pg_60',
+ 'numv_bb_pg_60',
+ 'numv_pkg_prcng_pg_60',
+ 'numv_bb_modm_rtrs_pg_60',
+ 'numv_bb_promo_pg_60',
+ 'numv_bb_hgh_spd_pg_60',
+ 'numv_bb_stry_pg_60',
+ 'numv_bndl_pg_60',
+ 'numv_bndl_tv_bb_pg_60',
+ 'numv_bndl_pkg_prcng_pg_60',
+ 'NUMV_SHM_google_PG_60',
+ 'NUMV_HM_PG_60',
+ 'NUMV_TMN_PG_60',
+ 'signin_30',
+ 'service_30',
+ 'tv_30',
+ 'tv_package_30',
+ 'internet_30',
+ 'numv_tv_pg_30',
+ 'numv_how_to_order_tv_pg_30',
+ 'numv_tv_pkg_pg_30',
+ 'numv_4k_tv_pg_30',
+ 'numv_compare_tv_pg_30',
+ 'numv_tv_hardware_pg_30',
+ 'numv_tv_pkge_prcng_pg_30',
+ 'numv_tv_free_promo_pg_30',
+ 'numv_tv_start_pkge_pg_30',
+ 'numv_tv_tmn_pg_30',
+ 'numv_bb_pg_30',
+ 'numv_pkg_prcng_pg_30',
+ 'numv_bb_modm_rtrs_pg_30',
+ 'numv_bb_hgh_spd_pg_30',
+ 'numv_bb_stry_pg_30',
+ 'numv_bndl_pg_30',
+ 'numv_bndl_tv_bb_pg_30',
+ 'numv_bndl_pkg_prcng_pg_30',
+ 'numv_bndl_promo_pg_30',
+ 'NUMV_SHM_google_PG_30',
+ 'NUMV_HM_PG_30',
+ 'NUMV_TMN_PG_30',
+ 'r_up_mbytes_7d_30d',
+ 'r_down_mbytes_7d_30d',
+ 'r_total_usg_mbytes_7d_30d',
+ 'r_up_mbytes_7d_60d',
+ 'r_down_mbytes_7d_60d',
+ 'r_total_usg_mbytes_7d_60d',
+ 'r_up_mbytes_7d_90d',
+ 'r_down_mbytes_7d_90d',
+ 'r_total_usg_mbytes_7d_90d',
+ 'r_outage_count_7d_60d',
+ 'r_up_status_count_7d_60d',
+ 'r_down_status_count_7d_60d',
+ 'r_outage_count_7d_90d',
+ 'r_up_status_count_7d_90d',
+ 'r_down_status_count_7d_90d',
+ 'r_downtime_all_day_7d_90d',
+ 'TV',
+ 'Recomm_Accepted',
+ 'RecommEOP_Accepted',
+ 'RecommLoyalty_Accepted',
+ 'DeviceProtection_Accepted',
+ 'IgniteTVRecommendedPlan_Accepted',
+ 'LTRRiskResi_Accepted',
+ 'ResiAddBB_Accepted',
+ 'ResiAddIgniteTV_Accepted',
+ 'ResiAddWRLS_Accepted',
+ 'ResiRetention_Accepted',
+ 'SHM_Accepted',
+ 'VAS_Accepted',
+ 'WirelessRenewal_Accepted',
+ 'WirelessRetention_Accepted',
+ 'WRLSAddResi_Accepted',
+ 'Recomm_Declined',
+ 'RecommEOP_Declined',
+ 'RecommLoyalty_Declined',
+ 'DEFAULT_Declined',
+ 'DeviceProtection_Declined',
+ 'IgniteTVRecommendedPlan_Declined',
+ 'LTRRiskResi_Declined',
+ 'ResiAddBB_Declined',
+ 'ResiAddIgniteTV_Declined',
+ 'ResiAddWRLS_Declined',
+ 'ResiRetention_Declined',
+ 'SHM_Declined',
+ 'VAS_Declined',
+ 'WirelessRenewal_Declined',
+ 'WirelessRetention_Declined',
+ 'WRLSAddResi_Declined',
+ 'Recomm_Interested',
+ 'RecommEOP_Interested',
+ 'RecommLoyalty_Interested',
+ 'DEFAULT_Interested',
+ 'DeviceProtection_Interested',
+ 'IgnTVRecommPlan_Interested',
+ 'LTRRiskResi_Interested',
+ 'ResiAddBB_Interested',
+ 'ResiAddIgniteTV_Interested',
+ 'ResiAddWRLS_Interested',
+ 'ResiRetention_Interested',
+ 'SHM_Interested',
+ 'VAS_Interested',
+ 'WirelessRenewal_Interested',
+ 'WirelessRetention_Interested',
+ 'WRLSAddResi_Interested',
+ 'CUSTOMER_MULTI_PRODUCT_TVE-INT',
+ 'CUSTOMER_MULTI_PRODUCT_TVE-INT-RHP',
+ 'CUSTOMER_MULTI_PRODUCT_TVE-INT-SHM',
+ 'CUSTOMER_MULTI_PRODUCT_TVE-INT-RHP-SHM',
+ 'pre_prod_tier_max_IG150u',
+ 'pre_prod_tier_max_IG500u',
+ 'pre_prod_tier_max_IG_30',
+ 'pre_prod_tier_max_others',
+ 'sfu_mdu_MDU',
+ 'sfu_mdu_SFU',
+ 'internet_modem_WXB6',
+ 'internet_modem_others',
+ 'ftth_seg_FTTN',
+ 'ftth_seg_FTTH',
+ 'ftth_seg_ATM',
+ 'ftth_seg_WTTH',
+ 'ftth_seg_UNKNOWN',
+ 'ftth_ind_N',
+ 'ftth_ind_Y',
+ 'Chng_Int_Serv_Disc_No_Int_Disc_Chng',
+ 'Chng_Int_Serv_Disc_No_Discount',
+ 'Chng_Int_Serv_Disc_Int_Disc_Reduced',
+ 'Chng_Int_Serv_Disc_Int_Disc_Increased',
+ 'Chng_TVE_Tier_Same_TVE_Tier',
+ 'Chng_TVE_Tier_Chng_TVE_Tier']]
+
+from azureml.core.model import Model
+model_obj = Model(ws, 'IGN_BDL_Upsell_model',version=1)
+model_path=model_obj.download(exist_ok=True)
+loaded_model=joblib.load(model_path)
+
+x_v = df_v_4.loc[:, df_v_4.columns != 'target']
+y_predict_XGB_v=loaded_model.predict(x_v)
+
+# aggregage by selecting the max score by CAN or ECID
