@@ -26,7 +26,7 @@ and c.multi_product_name in (
 'TVE-INT',
 'TVE-INT-RHP',
 'TVE-INT-RHP-SHM',
-'TVE-INT-SHM');
+'TVE-INT-SHM'); /*if we change the target defination to apply the tier upgrades to all Ignite cxs, then we can remove the condition 'c.multi_product_name...' from line 25*/
 
 create table mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202109 as
 select distinct 
@@ -92,7 +92,7 @@ and c.multi_product_name in (
 'TVE-INT',
 'TVE-INT-RHP',
 'TVE-INT-RHP-SHM',
-'TVE-INT-SHM');
+'TVE-INT-SHM');/*if we change the target defination to apply the tier upgrades to all Ignite cxs, then we can remove the condition 'c.multi_product_name...' from line 25*/
 
 create table mlmodel_data.CG_DAT2_CH_IGN_bdl_up_202110 as
 select distinct 
